@@ -1,0 +1,10 @@
+{
+  "description": "Helps Egyptian shoppers find and verify Amazon.eg price drops with observed price histories, then track offers and decide whether to buy or wait.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

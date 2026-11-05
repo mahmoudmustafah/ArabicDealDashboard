@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #12161c;
+  --color-body: #4a525e;
+  --color-mute: #79818d;
+  --color-line: #e3e6ea;
+  --color-canvas: #f4f5f7;
+  --color-drop: #0d7a43;
+  --color-drop-soft: #e3f4ea;
+  --color-pending: #9a5b00;
+  --color-pending-soft: #fff1d6;
+  --color-pending-line: #f2c46d;
+  --color-adv: #5b6370;
+  --color-adv-soft: #eef0f3;
+  --color-fail: #b42318;
+  --color-fail-soft: #fdecea;
+  --color-brand: #12161c;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+    background: var(--color-canvas);
+    -webkit-font-smoothing: antialiased;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+}
+
+@keyframes slide-in {
+  from { transform: translateX(-24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.anim-panel { animation: slide-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.anim-fade { animation: fade-in 180ms ease-out; }
+@media (max-width: 1023px) {
+  @keyframes rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .anim-panel { animation: rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+}
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
