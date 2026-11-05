@@ -54,10 +54,25 @@ export function OfferCard({ p, saved, onToggleSave, onOpen, active }: Props) {
             </div>
           </div>
 
-          {/* two separately labelled discounts */}
+          {/* two separately labelled discounts — real (observed) discount first, on the right in RTL */}
           <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-line text-[11.5px]">
-            <div className="bg-adv-soft/60 px-3 py-2">
-              <div className="font-medium text-adv">خصم معلن</div>
+            <div className={cx('px-3 py-2', pending ? 'bg-pending-soft' : obsPct ? 'bg-drop-soft' : 'bg-white')}>
+              <div className={cx('font-semibold', pending ? 'text-pending' : obsPct ? 'text-drop' : 'text-body')}>
+                {pending ? 'الخصم الحقيقي · قيد التحقق' : 'الخصم الحقيقي'}
+              </div>
+              {obsPct ? (
+                <div className="mt-0.5 flex items-baseline gap-1.5">
+                  <Pct n={obsPct} className={cx('text-[17px] font-bold', pending ? 'text-pending' : 'text-drop')} />
+                  <span className="truncate text-mute">
+                    {a.belowUsual ? `عن وسيط ${a.medianWindowDays} يوم` : `من ${date(a.prevHigher!.t)}`}
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-0.5 text-[13px] text-mute">{a.sufficient ? 'السعر ثابت' : 'بيانات غير كافية'}</div>
+              )}
+            </div>
+            <div className="border-s border-line bg-adv-soft/60 px-3 py-2">
+              <div className="font-medium text-adv">الخصم على الموقع</div>
               {a.advertisedPct ? (
                 <div className="mt-0.5 flex items-baseline gap-1.5">
                   <Pct n={a.advertisedPct} className="text-[17px] font-bold text-adv" />
@@ -66,21 +81,6 @@ export function OfferCard({ p, saved, onToggleSave, onOpen, active }: Props) {
                 </div>
               ) : (
                 <div className="mt-0.5 text-[13px] text-mute">مفيش</div>
-              )}
-            </div>
-            <div className={cx('border-s border-line px-3 py-2', pending ? 'bg-pending-soft' : obsPct ? 'bg-drop-soft' : 'bg-white')}>
-              <div className={cx('font-medium', pending ? 'text-pending' : obsPct ? 'text-drop' : 'text-body')}>
-                {pending ? 'مرصود · قيد التحقق' : a.belowUsual ? 'تحت المعتاد' : 'نزول مرصود'}
-              </div>
-              {obsPct ? (
-                <div className="mt-0.5 flex items-baseline gap-1.5">
-                  <Pct n={obsPct} className={cx('text-[17px] font-bold', pending ? 'text-pending' : 'text-drop')} />
-                  <span className="truncate text-mute">
-                    {a.belowUsual ? `وسيط ${a.medianWindowDays} يوم` : `من ${date(a.prevHigher!.t)}`}
-                  </span>
-                </div>
-              ) : (
-                <div className="mt-0.5 text-[13px] text-mute">{a.sufficient ? 'السعر ثابت' : 'بيانات غير كافية'}</div>
               )}
             </div>
           </div>
