@@ -1,4 +1,5 @@
 import { DAY, NOW, type Obs, type Product, type Scan } from './data'
+import { L } from './i18n'
 
 export const MIN_OBS = 10
 export const MIN_SPAN_DAYS = 21
@@ -96,13 +97,14 @@ export function analyze(p: Product): Analysis {
 
 export type DealStatus = 'exceptional' | 'below_usual' | 'observed_drop' | 'insufficient' | 'advertised_only'
 
-export const statusLabels: Record<DealStatus, string> = {
-  exceptional: 'نزول استثنائي — قيد التحقق',
-  below_usual: 'أقل من المعتاد',
-  observed_drop: 'نزول مرصود',
-  insufficient: 'بيانات غير كافية',
-  advertised_only: 'خصم معلن فقط',
-}
+export const statusLabel = (s: DealStatus) =>
+  ({
+    exceptional: L('نزول استثنائي — قيد التحقق', 'Exceptional drop — verifying'),
+    below_usual: L('أقل من المعتاد', 'Below usual'),
+    observed_drop: L('نزول مرصود', 'Observed drop'),
+    insufficient: L('بيانات غير كافية', 'Not enough data'),
+    advertised_only: L('خصم معلن فقط', 'Advertised discount only'),
+  })[s]
 
 /** All evidence labels that apply, strongest first. */
 export function statuses(a: Analysis): DealStatus[] {
@@ -138,9 +140,17 @@ export function enrich(products: Product[], scans: Scan[]): Enriched[] {
     }
     if (p.staleAt) checkedAt = p.staleAt
     checkedAt = Math.max(checkedAt, a.current.t)
-    return { ...p, a, checkedAt, stale: NOW - checkedAt > DAY, skippedLastScan }
+    return {
+      ...p,
+      name: L(p.name, p.nameEn),
+      fullName: L(p.fullName, p.fullNameEn),
+      a,
+      checkedAt,
+      stale: NOW - checkedAt > DAY,
+      skippedLastScan,
+    }
   })
 }
 
 export const amazonUrl = (p: Product) =>
-  `https://www.amazon.eg/s?k=${encodeURIComponent(p.fullName.split('،')[0])}&language=ar_AE`
+  `https://www.amazon.eg/s?k=${encodeURIComponent(p.fullNameEn.split(',')[0])}&language=${L('ar_AE', 'en_AE')}`

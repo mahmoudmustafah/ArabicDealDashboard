@@ -1,23 +1,71 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --font-sans: 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'IBM Plex Sans Arabic', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --color-ink: #12161c;
+  --color-ink-hover: #2a3038;
   --color-body: #4a525e;
   --color-mute: #79818d;
   --color-line: #e3e6ea;
+  --color-line-strong: #c3c9d1;
+  --color-grid: #e9ebee;
+  --color-thumb: #eceef1;
   --color-canvas: #f4f5f7;
   --color-drop: #0d7a43;
   --color-drop-soft: #e3f4ea;
   --color-pending: #9a5b00;
+  --color-pending-ink: #5c3a00;
   --color-pending-soft: #fff1d6;
   --color-pending-line: #f2c46d;
   --color-adv: #5b6370;
   --color-adv-soft: #eef0f3;
   --color-fail: #b42318;
   --color-fail-soft: #fdecea;
+  --color-noon-soft: #fff4b8;
+  --color-noon-ink: #5a4a00;
+  --color-emarati-soft: #f3e8da;
+  --color-emarati-ink: #6b4a1f;
+  --color-tg: #2a7ab0;
   --color-brand: #12161c;
+}
+
+/*
+ * Dark theme. "white" is the card surface and "ink" the strongest foreground, so
+ * inverting them keeps every bg-white card / bg-ink button pairing readable.
+ */
+.dark {
+  --color-white: #161b22;
+  --color-ink: #e8ecf1;
+  --color-ink-hover: #c9d0d8;
+  --color-body: #a8b1bc;
+  --color-mute: #7c8794;
+  --color-line: #262d36;
+  --color-line-strong: #3b4450;
+  --color-grid: #222932;
+  --color-thumb: #1e242c;
+  --color-canvas: #0d1116;
+  --color-drop: #3ccf85;
+  --color-drop-soft: #0f2a1c;
+  --color-pending: #f2b544;
+  --color-pending-ink: #f6dba6;
+  --color-pending-soft: #2b2110;
+  --color-pending-line: #6d4f17;
+  --color-adv: #a3adb9;
+  --color-adv-soft: #1f252d;
+  --color-fail: #ff6d61;
+  --color-fail-soft: #2e1513;
+  --color-noon-soft: #3a3410;
+  --color-noon-ink: #f3df78;
+  --color-emarati-soft: #33281b;
+  --color-emarati-ink: #e8c9a0;
+  --color-tg: #62b5ee;
+}
+
+html[lang='en'] {
+  --font-sans: 'IBM Plex Sans', 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {
@@ -26,26 +74,35 @@
     color: var(--color-ink);
     background: var(--color-canvas);
     -webkit-font-smoothing: antialiased;
+    transition: background-color 200ms ease;
   }
   .num {
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum';
   }
+  .dark img {
+    filter: brightness(0.92);
+  }
 }
 
-@keyframes slide-in {
+@keyframes slide-in-rtl {
   from { transform: translateX(-24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes slide-in-ltr {
+  from { transform: translateX(24px); opacity: 0; }
   to { transform: none; opacity: 1; }
 }
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-.anim-panel { animation: slide-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.anim-panel { animation: slide-in-rtl 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+[dir='ltr'] .anim-panel { animation-name: slide-in-ltr; }
 .anim-fade { animation: fade-in 180ms ease-out; }
 @media (max-width: 1023px) {
   @keyframes rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
-  .anim-panel { animation: rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .anim-panel, [dir='ltr'] .anim-panel { animation-name: rise; }
 }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }

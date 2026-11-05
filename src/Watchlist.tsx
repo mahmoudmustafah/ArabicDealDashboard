@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, BookmarkX, Bookmark, ExternalLink, Minus } from 'lucide-react'
 import { amazonUrl, statuses, type Enriched } from './deal'
 import { ago, date, price } from './format'
+import { L } from './i18n'
 import { Sparkline } from './PriceChart'
 import { Money, SampleTag, StaleBadge, StatusBadge, Thumb, cx } from './ui'
 
@@ -8,16 +9,16 @@ type Props = { items: Enriched[]; remove: (id: string) => void; open: (id: strin
 
 function Change({ p }: { p: Enriched }) {
   const c = p.a.recentChange
-  if (!c) return <span className="inline-flex items-center gap-1 text-[12.5px] text-mute"><Minus className="size-3.5" /> مفيش تغيير مرصود</span>
+  if (!c) return <span className="inline-flex items-center gap-1 text-[12.5px] text-mute"><Minus className="size-3.5" /> {L('مفيش تغيير مرصود', 'No observed change')}</span>
   const down = c.delta < 0
   return (
     <div className="text-[12.5px] leading-5">
       <span className={cx('num inline-flex items-center gap-0.5 font-bold', down ? 'text-drop' : 'text-fail')}>
         {down ? <ArrowDown className="size-3.5" /> : <ArrowUp className="size-3.5" />}
-        <bdi>{price(Math.abs(c.delta))}</bdi> ج.م
+        <bdi>{price(Math.abs(c.delta))}</bdi> {L('ج.م', 'EGP')}
       </span>
       <div className="text-[11.5px] text-mute">
-        من <bdi className="num">{price(c.from.price)}</bdi> · {date(c.to.t)}
+        {L('من', 'from')} <bdi className="num">{price(c.from.price)}</bdi> · {date(c.to.t)}
       </div>
     </div>
   )
@@ -29,8 +30,9 @@ export function Watchlist({ items, remove, open, goFeed }: Props) {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[13.5px] text-body">
-          <span className="num font-bold text-ink">{items.length}</span> منتج متابَع ·{' '}
-          <span className="num font-bold text-drop">{drops}</span> منهم سعره نزل في آخر تغيير
+          <span className="num font-bold text-ink">{items.length}</span> {L('منتج متابَع', 'tracked products')} ·{' '}
+          <span className="num font-bold text-drop">{drops}</span>{' '}
+          {L('منهم سعره نزل في آخر تغيير', 'dropped in their latest change')}
         </p>
         <SampleTag />
       </div>
@@ -38,10 +40,15 @@ export function Watchlist({ items, remove, open, goFeed }: Props) {
       {!items.length ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-white py-16 text-center">
           <Bookmark className="size-6 text-mute" />
-          <div className="font-semibold">قائمة المتابعة فاضية</div>
-          <p className="max-w-xs text-[13px] text-body">اضغط "تابِع" على أي عرض وهنعرض هنا آخر سعر مرصود وأي تغيير فيه.</p>
+          <div className="font-semibold">{L('قائمة المتابعة فاضية', 'Your watchlist is empty')}</div>
+          <p className="max-w-xs text-[13px] text-body">
+            {L(
+              'اضغط "تابِع" على أي عرض وهنعرض هنا آخر سعر مرصود وأي تغيير فيه.',
+              'Tap "Track" on any offer to see its latest observed price and any changes here.',
+            )}
+          </p>
           <button onClick={goFeed} className="h-9 rounded-lg bg-ink px-4 text-[13px] font-semibold text-white">
-            تصفح العروض
+            {L('تصفح العروض', 'Browse offers')}
           </button>
         </div>
       ) : (
@@ -51,12 +58,12 @@ export function Watchlist({ items, remove, open, goFeed }: Props) {
             <table className="w-full text-start text-[13px]">
               <thead className="bg-canvas/70 text-[12px] text-body">
                 <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-start [&>th]:font-semibold">
-                  <th>المنتج</th>
-                  <th>آخر سعر مرصود</th>
-                  <th>آخر تغيير</th>
-                  <th>أقل سعر مرصود</th>
-                  <th>30 يوم</th>
-                  <th>آخر فحص</th>
+                  <th>{L('المنتج', 'Product')}</th>
+                  <th>{L('آخر سعر مرصود', 'Last observed price')}</th>
+                  <th>{L('آخر تغيير', 'Latest change')}</th>
+                  <th>{L('أقل سعر مرصود', 'Lowest observed')}</th>
+                  <th>{L('30 يوم', '30 days')}</th>
+                  <th>{L('آخر فحص', 'Last checked')}</th>
                   <th />
                 </tr>
               </thead>
@@ -105,11 +112,11 @@ export function Watchlist({ items, remove, open, goFeed }: Props) {
                           rel="noreferrer"
                           className="inline-flex h-8 items-center gap-1 rounded-lg border border-line px-2.5 text-[12px] font-semibold hover:bg-canvas"
                         >
-                          أمازون <ExternalLink className="size-3.5" />
+                          {L('أمازون', 'Amazon')} <ExternalLink className="size-3.5" />
                         </a>
                         <button
                           onClick={() => remove(p.id)}
-                          aria-label="شيل من المتابعة"
+                          aria-label={L('شيل من المتابعة', 'Remove from watchlist')}
                           className="grid size-8 place-items-center rounded-lg text-mute hover:bg-fail-soft hover:text-fail"
                         >
                           <BookmarkX className="size-4" />
@@ -139,7 +146,7 @@ export function Watchlist({ items, remove, open, goFeed }: Props) {
                 <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
                   <Change p={p} />
                   <div className={cx('text-[11.5px]', p.stale ? 'font-semibold text-fail' : 'text-mute')}>
-                    اتفحص {ago(p.checkedAt)}
+                    {L('اتفحص', 'Checked')} {ago(p.checkedAt)}
                   </div>
                 </div>
               </div>

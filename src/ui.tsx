@@ -1,7 +1,8 @@
 import { AlertTriangle, ArrowDown, Clock, HelpCircle, ImageOff, Tag, TrendingDown } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { DealStatus } from './deal'
-import { statusLabels } from './deal'
+import { statusLabel } from './deal'
+import { L } from './i18n'
 import { price } from './format'
 
 export function cx(...c: (string | false | undefined | null)[]) {
@@ -42,7 +43,7 @@ export function StatusBadge({ s, size = 'sm' }: { s: DealStatus; size?: 'sm' | '
       )}
     >
       {st.icon}
-      {statusLabels[s]}
+      {statusLabel(s)}
     </span>
   )
 }
@@ -51,16 +52,16 @@ export function StaleBadge() {
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 text-[11.5px] font-semibold whitespace-nowrap text-white">
       <Clock className="size-3.5" strokeWidth={2.4} />
-      سعر قديم
+      {L('سعر قديم', 'Stale price')}
     </span>
   )
 }
 
-export function Money({ n, className, unit = 'ج.م', strike }: { n: number; className?: string; unit?: string; strike?: boolean }) {
+export function Money({ n, className, unit, strike }: { n: number; className?: string; unit?: string; strike?: boolean }) {
   return (
     <span className={cx('num inline-flex items-baseline gap-1 whitespace-nowrap', className)}>
       <bdi className={cx(strike && 'line-through decoration-1')}>{price(n)}</bdi>
-      <span className="text-[0.62em] font-medium opacity-70">{unit}</span>
+      <span className="text-[0.62em] font-medium opacity-70">{unit ?? L('ج.م', 'EGP')}</span>
     </span>
   )
 }
@@ -76,13 +77,13 @@ export function Pct({ n, className }: { n: number; className?: string }) {
 export function Thumb({ src, alt, className }: { src?: string; alt: string; className?: string }) {
   const [failed, setFailed] = useState(false)
   return (
-    <div className={cx('relative overflow-hidden bg-[#eceef1]', className)}>
+    <div className={cx('@container relative overflow-hidden bg-thumb', className)}>
       {src && !failed ? (
         <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className="size-full object-cover" />
       ) : (
         <div className="flex size-full flex-col items-center justify-center gap-1 text-mute">
           <ImageOff className="size-5" strokeWidth={1.6} />
-          <span className="text-[10.5px]">مفيش صورة</span>
+          <span className="hidden text-[10.5px] @min-[64px]:block">{L('مفيش صورة', 'No image')}</span>
         </div>
       )}
     </div>
@@ -93,12 +94,12 @@ export function SampleTag({ className }: { className?: string }) {
   return (
     <span
       className={cx(
-        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-[#b8bec7] bg-white px-2 py-0.5 text-[11px] font-semibold text-body',
+        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-line-strong bg-white px-2 py-0.5 text-[11px] font-semibold text-body',
         className,
       )}
     >
-      <span className="size-1.5 rounded-full bg-[#b8bec7]" />
-      بيانات تجريبية
+      <span className="size-1.5 rounded-full bg-line-strong" />
+      {L('بيانات تجريبية', 'Sample data')}
     </span>
   )
 }
