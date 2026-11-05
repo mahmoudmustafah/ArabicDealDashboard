@@ -70,7 +70,7 @@ An offer is published to **General** if it's fresh (read in the last 20 minutes)
 
 There's also a cap of **30 General posts per hour**. Extra offers wait, strongest first.
 
-**Priority** (FROM BRIEF) applies when the discount is **strictly greater than 50%** or the drop is exceptional. A discount of exactly 50% qualifies only through exceptional status.
+**Priority** applies when the discount is **50% or more** or the drop is exceptional. This is Mayar's decision from 2026-11-05: the brief said strictly more than 50%. Priority posts go to a private chat with the bot, and General posts go to the public channel @orodmano.
 
 The brief lets advertised discounts count toward priority, so `priorityAllowsAdvertised: true`. **Recommendation:** set this to `false`, so a 55% advertised claim we never verified doesn't go to the premium channel.
 

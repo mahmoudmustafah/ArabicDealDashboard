@@ -8,11 +8,12 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "node --env-file-if-exists=.env --import tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "scan-once": "tsx src/cli.ts scan-once",
+    "scan-once": "node --env-file-if-exists=.env --import tsx src/cli.ts scan-once",
     "test": "tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "telegram-setup": "node --env-file-if-exists=.env --import tsx src/cli.ts telegram-setup"
   },
   "dependencies": {
     "node-html-parser": "^6.1.13"

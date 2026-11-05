@@ -23,7 +23,8 @@ pnpm scan-once amazon-monitors   # one job, printed, for checking collectors aga
 | Env | |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Bot token. Unset means dry-run: nothing is sent, and deliveries are marked `dry_run` |
-| `TELEGRAM_PRIORITY_CHAT_ID`, `TELEGRAM_GENERAL_CHAT_ID` | Channel ids or `@handles` (the bot must be an admin) |
+| `TELEGRAM_PRIORITY_CHAT_ID` | Your private chat with the bot (50%+ and exceptional deals). `pnpm telegram-setup` prints it after you press Start in the bot |
+| `TELEGRAM_GENERAL_CHAT_ID` | Public channel, e.g. `@orodmano` (the bot must be an admin with "Post messages") |
 | `DEAL_RADAR_DB` | SQLite file (default `deal-radar.sqlite`) |
 | `PORT` | API port (default 8787) |
 | `CORS_ORIGIN` | Allowed dashboard origin (default `*`) |

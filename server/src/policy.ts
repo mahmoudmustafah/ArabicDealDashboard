@@ -28,8 +28,8 @@ export function routingPct(a: Analysis) {
   return Math.max(...parts)
 }
 
-/** Priority when the discount is strictly greater than 50%, or the drop is exceptional (brief §14). */
-export const isPriority = (a: Analysis) => a.exceptional || routingPct(a) > P.priorityPct
+/** Priority when the discount is 50% or more, or the drop is exceptional. */
+export const isPriority = (a: Analysis) => a.exceptional || routingPct(a) >= P.priorityPct
 
 export function decide(a: Analysis, ctx: { now: number; available?: boolean | null; lastPost?: LastPost }): Decision {
   const best = a.best
@@ -48,7 +48,7 @@ export function decide(a: Analysis, ctx: { now: number; available?: boolean | nu
   if (a.exceptional) why.push('exceptional drop (verifying)')
   if (!why.length && !priority)
     return { ...base, publish: false, priority, reason: `Below publication minimums (best: ${best.basis} ${r1(best.pct)}%)` }
-  if (priority && !a.exceptional) why.push(`routing discount ${r1(routingPct(a))}% > ${P.priorityPct}%`)
+  if (priority && !a.exceptional) why.push(`routing discount ${r1(routingPct(a))}% ≥ ${P.priorityPct}%`)
 
   // Duplicate prevention (brief §13).
   const lp = ctx.lastPost

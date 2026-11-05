@@ -120,7 +120,7 @@ export const evidence = {
 }
 
 export const publication = {
-  /** Brief §14: priority when discount > 50% (strictly) or exceptional. */
+  /** Priority when discount ≥ 50% or exceptional. Mayar's decision (2026-11-05): "50% and above" (the brief had strictly > 50%). */
   priorityPct: 50,
   /** Brief §14: advertised discounts can route to priority. Set false to require observed evidence. */
   priorityAllowsAdvertised: true,

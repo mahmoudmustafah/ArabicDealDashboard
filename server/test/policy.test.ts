@@ -7,11 +7,11 @@ const NOW = Date.UTC(2026, 10, 5, 12)
 const H = 3_600_000
 const flat = (hours: number, price: number): Obs[] => Array.from({ length: hours }, (_, i) => ({ t: NOW - (hours - i) * H, price }))
 
-test('exactly 50% does not route to priority; 51% does (brief §14)', () => {
+test('50% and above routes to priority; 49% does not', () => {
   assert.equal(isPriority(analyze([...flat(5, 1000), { t: NOW, price: 500 }])), true, '50% observed is also exceptional (≥35%)')
   // Advertised-only: exceptional does not apply
-  assert.equal(isPriority(analyze([{ t: NOW, price: 500 }], 1000)), false)
-  assert.equal(isPriority(analyze([{ t: NOW, price: 490 }], 1000)), true)
+  assert.equal(isPriority(analyze([{ t: NOW, price: 510 }], 1000)), false)
+  assert.equal(isPriority(analyze([{ t: NOW, price: 500 }], 1000)), true)
 })
 
 test('small observed drops are not published', () => {
