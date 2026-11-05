@@ -1,0 +1,25 @@
+{
+  "name": "deal-radar-service",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Backend for the Deal Radar dashboard: 10-minute store scans, price history, evidence, Telegram publishing.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "scan-once": "tsx src/cli.ts scan-once",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "node-html-parser": "^6.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
