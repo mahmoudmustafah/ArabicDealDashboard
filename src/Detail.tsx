@@ -98,15 +98,11 @@ export function Detail({ p, saved, onToggleSave, onClose }: Props) {
             strike
           />
           <div className="bg-white p-4">
-            <div className="text-[12px] font-medium text-body">الخصم: معلن مقابل مرصود</div>
+            <div className="text-[12px] font-medium text-body">الخصم الحقيقي مقابل الخصم على الموقع</div>
             <div className="mt-2 flex flex-col gap-1.5 text-[12.5px]">
               <div className="flex items-center justify-between">
-                <span className="rounded bg-adv-soft px-1.5 text-adv">خصم معلن</span>
-                {a.advertisedPct ? <Pct n={a.advertisedPct} className="font-bold text-adv" /> : <span className="text-mute">—</span>}
-              </div>
-              <div className="flex items-center justify-between">
-                <span className={cx('rounded px-1.5', a.exceptional ? 'bg-pending-soft text-pending' : 'bg-drop-soft text-drop')}>
-                  {a.belowUsual ? 'تحت المعتاد' : 'نزول مرصود'}
+                <span className={cx('rounded px-1.5 font-semibold', a.exceptional ? 'bg-pending-soft text-pending' : 'bg-drop-soft text-drop')}>
+                  الخصم الحقيقي
                 </span>
                 {(a.belowUsual ? a.belowUsualPct : a.observedDropPct) ? (
                   <Pct
@@ -116,6 +112,10 @@ export function Detail({ p, saved, onToggleSave, onClose }: Props) {
                 ) : (
                   <span className="text-mute">—</span>
                 )}
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="rounded bg-adv-soft px-1.5 text-adv">الخصم على الموقع</span>
+                {a.advertisedPct ? <Pct n={a.advertisedPct} className="font-bold text-adv" /> : <span className="text-mute">—</span>}
               </div>
             </div>
           </div>
