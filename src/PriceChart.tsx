@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Obs } from './data'
 import { DAY, NOW } from './data'
 import { dateTime, price, shortDate } from './format'
+import { L, isAr } from './i18n'
 
 type Props = { history: Obs[]; fromT: number; median?: number; lowest?: number; listPrice?: number }
 
@@ -73,18 +74,18 @@ export function PriceChart({ history, fromT, median, lowest }: Props) {
         onPointerDown={onMove}
         onPointerLeave={() => setHover(null)}
         role="img"
-        aria-label="رسم بياني لسجل السعر"
+        aria-label={L('رسم بياني لسجل السعر', 'Price history chart')}
       >
         <defs>
           <linearGradient id="pc-fill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#0d7a43" stopOpacity="0.16" />
-            <stop offset="100%" stopColor="#0d7a43" stopOpacity="0" />
+            <stop className="[stop-color:var(--color-drop)]" offset="0%" stopOpacity="0.16" />
+            <stop className="[stop-color:var(--color-drop)]" offset="100%" stopOpacity="0" />
           </linearGradient>
         </defs>
         {yTicks.map((v) => (
           <g key={v}>
-            <line x1={pad.l} x2={w - pad.r} y1={Y(v)} y2={Y(v)} stroke="#e9ebee" />
-            <text x={w - pad.r + 8} y={Y(v) + 4} fontSize="11" fill="#79818d" className="num">
+            <line className="stroke-grid" x1={pad.l} x2={w - pad.r} y1={Y(v)} y2={Y(v)} />
+            <text x={w - pad.r + 8} y={Y(v) + 4} fontSize="11" className="fill-mute num">
               {price(Math.round(v / 10) * 10)}
             </text>
           </g>
@@ -95,11 +96,10 @@ export function PriceChart({ history, fromT, median, lowest }: Props) {
             x={X(t)}
             y={H - 8}
             fontSize="11"
-            fill="#79818d"
+            className="fill-mute"
             textAnchor={i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'}
-            fontFamily="IBM Plex Sans Arabic"
           >
-            {i === xTicks.length - 1 ? 'اليوم' : totalDays < 3 ? '' : shortDate(t)}
+            {i === xTicks.length - 1 ? L('اليوم', 'Today') : totalDays < 3 ? '' : shortDate(t)}
           </text>
         ))}
         {median && (
@@ -109,28 +109,28 @@ export function PriceChart({ history, fromT, median, lowest }: Props) {
               x2={w - pad.r}
               y1={Y(median)}
               y2={Y(median)}
-              stroke="#4a525e"
+              className="stroke-body"
               strokeDasharray="4 4"
               strokeWidth={1.2}
             />
-            <rect x={pad.l} y={Y(median) - 19} width={92} height={16} rx={4} fill="#fff" opacity={0.9} />
-            <text x={pad.l + 4} y={Y(median) - 7} fontSize="10.5" fill="#4a525e" fontFamily="IBM Plex Sans Arabic">
-              المرجع المرصود (الوسيط)
+            <rect className="fill-white" x={pad.l} y={Y(median) - 19} width={isAr() ? 112 : 160} height={16} rx={4} opacity={0.9} />
+            <text className="fill-body" x={pad.l + 4} y={Y(median) - 7} fontSize="10.5">
+              {L('المرجع المرصود (الوسيط)', 'Observed reference (median)')}
             </text>
           </g>
         )}
         <path d={area} fill="url(#pc-fill)" />
-        <path d={d} fill="none" stroke="#0d7a43" strokeWidth={2} strokeLinejoin="round" />
+        <path className="stroke-drop" d={d} fill="none" strokeWidth={2} strokeLinejoin="round" />
         {lowest !== undefined &&
           pts
             .filter((p) => p.price === lowest)
             .slice(-1)
-            .map((p) => <circle key="low" cx={X(p.t)} cy={Y(p.price)} r={4} fill="#fff" stroke="#0d7a43" strokeWidth={2} />)}
-        {last && <circle cx={X(last.t)} cy={Y(last.price)} r={5} fill="#0d7a43" stroke="#fff" strokeWidth={2} />}
+            .map((p) => <circle className="fill-white stroke-drop" key="low" cx={X(p.t)} cy={Y(p.price)} r={4} strokeWidth={2} />)}
+        {last && <circle className="fill-drop stroke-white" cx={X(last.t)} cy={Y(last.price)} r={5} strokeWidth={2} />}
         {hp && (
           <g pointerEvents="none">
-            <line x1={X(hp.t)} x2={X(hp.t)} y1={pad.t} y2={H - pad.b} stroke="#12161c" strokeWidth={1} opacity={0.35} />
-            <circle cx={X(hp.t)} cy={Y(hp.price)} r={5} fill="#12161c" stroke="#fff" strokeWidth={2} />
+            <line className="stroke-ink" x1={X(hp.t)} x2={X(hp.t)} y1={pad.t} y2={H - pad.b} strokeWidth={1} opacity={0.35} />
+            <circle className="fill-ink stroke-white" cx={X(hp.t)} cy={Y(hp.price)} r={5} strokeWidth={2} />
           </g>
         )}
       </svg>
@@ -140,9 +140,9 @@ export function PriceChart({ history, fromT, median, lowest }: Props) {
           style={{
             left: Math.min(Math.max(X(hp.t) - 70, 0), w - 150),
           }}
-          dir="rtl"
+          dir={isAr() ? 'rtl' : 'ltr'}
         >
-          <div className="num text-sm font-bold">{price(hp.price)} ج.م</div>
+          <div className="num text-sm font-bold">{price(hp.price)} {L('ج.م', 'EGP')}</div>
           <div className="text-[11px] text-white/70">{dateTime(hp.t)}</div>
         </div>
       )}
@@ -163,8 +163,8 @@ export function Sparkline({ history, w = 96, h = 28 }: { history: Obs[]; w?: num
   const last = pts[pts.length - 1]
   return (
     <svg width={w} height={h} aria-hidden>
-      <path d={d} fill="none" stroke="#0d7a43" strokeWidth={1.6} />
-      <circle cx={X(last.t)} cy={Y(last.price)} r={2.5} fill="#0d7a43" />
+      <path className="stroke-drop" d={d} fill="none" strokeWidth={1.6} />
+      <circle className="fill-drop" cx={X(last.t)} cy={Y(last.price)} r={2.5} />
     </svg>
   )
 }

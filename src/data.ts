@@ -5,13 +5,15 @@ export const HOUR = 3600e3
 export const DAY = 24 * HOUR
 export const TRACKED_TOTAL = 186
 
+import { L, type T } from './i18n'
+
 export type CategoryId = 'monitors' | 'headphones' | 'keyboards' | 'storage'
 
-export const categories: { id: CategoryId; label: string }[] = [
-  { id: 'monitors', label: 'شاشات كمبيوتر' },
-  { id: 'headphones', label: 'سماعات' },
-  { id: 'keyboards', label: 'كيبورد وماوس' },
-  { id: 'storage', label: 'تخزين' },
+export const categories: { id: CategoryId; label: T }[] = [
+  { id: 'monitors', label: { ar: 'شاشات كمبيوتر', en: 'Monitors' } },
+  { id: 'headphones', label: { ar: 'سماعات', en: 'Headphones' } },
+  { id: 'keyboards', label: { ar: 'كيبورد وماوس', en: 'Keyboards & mice' } },
+  { id: 'storage', label: { ar: 'تخزين', en: 'Storage' } },
 ]
 
 export const futureSources = ['B.TECH', '2B Egypt']
@@ -22,6 +24,8 @@ export type Product = {
   id: string
   name: string
   fullName: string
+  nameEn: string
+  fullNameEn: string
   category: CategoryId
   image?: string
   /** Price Amazon shows as crossed-out / "was" price. */
@@ -79,6 +83,8 @@ export const products: Product[] = [
     id: 'odyssey-g5',
     name: 'سامسونج أوديسي G5 مقاس 27″',
     fullName: 'شاشة ألعاب سامسونج أوديسي G5 مقاس 27 بوصة، QHD، ‏165 هرتز، منحنية',
+    nameEn: 'Samsung Odyssey G5 27″',
+    fullNameEn: 'Samsung Odyssey G5 27-inch curved gaming monitor, QHD, 165Hz',
     category: 'monitors',
     image: img.monitorDesk,
     listPrice: 18999,
@@ -93,6 +99,8 @@ export const products: Product[] = [
     id: 'dell-s2721ds',
     name: 'ديل S2721DS مقاس 27″ QHD',
     fullName: 'شاشة ديل S2721DS مقاس 27 بوصة، QHD ‏IPS، سماعات مدمجة',
+    nameEn: 'Dell S2721DS 27″ QHD',
+    fullNameEn: 'Dell S2721DS 27-inch QHD IPS monitor with built-in speakers',
     category: 'monitors',
     listPrice: 11499,
     history: [{ t: NOW - 2.4 * HOUR, price: 8999 }],
@@ -101,6 +109,8 @@ export const products: Product[] = [
     id: 'xiaomi-a27i',
     name: 'شاومي A27i مقاس 27″ ‏100Hz',
     fullName: 'شاشة شاومي A27i مقاس 27 بوصة، Full HD، ‏100 هرتز',
+    nameEn: 'Xiaomi A27i 27″ 100Hz',
+    fullNameEn: 'Xiaomi A27i 27-inch Full HD monitor, 100Hz',
     category: 'monitors',
     image: img.monitorFlat,
     listPrice: 6499,
@@ -113,6 +123,8 @@ export const products: Product[] = [
     id: 'lg-24gn60r',
     name: 'إل جي ألترا جير 24″ ‏144Hz',
     fullName: 'شاشة إل جي ألترا جير 24GN60R مقاس 24 بوصة، IPS، ‏144 هرتز',
+    nameEn: 'LG UltraGear 24″ 144Hz',
+    fullNameEn: 'LG UltraGear 24GN60R 24-inch IPS monitor, 144Hz',
     category: 'monitors',
     image: img.imac,
     listPrice: 7999,
@@ -126,6 +138,8 @@ export const products: Product[] = [
     id: 'anker-q30',
     name: 'سماعة أنكر ساوندكور Q30',
     fullName: 'سماعة رأس لاسلكية أنكر ساوندكور Life Q30 بعزل ضوضاء',
+    nameEn: 'Anker Soundcore Q30',
+    fullNameEn: 'Anker Soundcore Life Q30 noise-cancelling wireless headphones',
     category: 'headphones',
     image: img.headphonesFlat,
     listPrice: 4999,
@@ -135,6 +149,8 @@ export const products: Product[] = [
     id: 'mx-keys-s',
     name: 'كيبورد لوجيتك MX Keys S',
     fullName: 'كيبورد لاسلكي لوجيتك MX Keys S بإضاءة خلفية — عربي/إنجليزي',
+    nameEn: 'Logitech MX Keys S',
+    fullNameEn: 'Logitech MX Keys S wireless backlit keyboard, Arabic/English',
     category: 'keyboards',
     image: img.keyboardOrange,
     listPrice: 5999,
@@ -148,6 +164,8 @@ export const products: Product[] = [
     id: 'aoc-27g2sp',
     name: 'AOC ‏27G2SP مقاس 27″ ‏165Hz',
     fullName: 'شاشة AOC ‏27G2SP مقاس 27 بوصة، IPS، ‏165 هرتز',
+    nameEn: 'AOC 27G2SP 27″ 165Hz',
+    fullNameEn: 'AOC 27G2SP 27-inch IPS monitor, 165Hz',
     category: 'monitors',
     image: img.workspace,
     listPrice: 9999,
@@ -161,6 +179,8 @@ export const products: Product[] = [
     id: 'samsung-t7',
     name: 'هارد سامسونج T7 ‏1 تيرا',
     fullName: 'هارد SSD خارجي سامسونج T7 سعة 1 تيرابايت USB 3.2',
+    nameEn: 'Samsung T7 SSD 1TB',
+    fullNameEn: 'Samsung T7 1TB portable SSD, USB 3.2',
     category: 'storage',
     history: build(
       71,
@@ -175,6 +195,8 @@ export const products: Product[] = [
     id: 'huawei-mateview-se',
     name: 'هواوي MateView SE ‏23.8″',
     fullName: 'شاشة هواوي MateView SE مقاس 23.8 بوصة، IPS، ‏75 هرتز',
+    nameEn: 'Huawei MateView SE 23.8″',
+    fullNameEn: 'Huawei MateView SE 23.8-inch IPS monitor, 75Hz',
     category: 'monitors',
     image: img.monitorFlat,
     listPrice: 5999,
@@ -187,6 +209,8 @@ export const products: Product[] = [
     id: 'jbl-tune-520',
     name: 'سماعة JBL Tune 520BT',
     fullName: 'سماعة رأس لاسلكية JBL Tune 520BT — أسود',
+    nameEn: 'JBL Tune 520BT',
+    fullNameEn: 'JBL Tune 520BT wireless headphones, black',
     category: 'headphones',
     image: img.headphonesBlack,
     listPrice: 2499,
@@ -199,6 +223,8 @@ export const products: Product[] = [
     id: 'redragon-k552',
     name: 'كيبورد ريدراجون K552',
     fullName: 'كيبورد ميكانيكي ريدراجون K552 Kumara بإضاءة حمراء',
+    nameEn: 'Redragon K552 keyboard',
+    fullNameEn: 'Redragon K552 Kumara mechanical keyboard, red backlight',
     category: 'keyboards',
     image: img.keyboardRed,
     listPrice: 1599,
@@ -224,15 +250,15 @@ export function buildScans(scenario: Scenario): Scan[] {
   for (let i = 0; i < 18; i++) {
     const at = NOW - 15 * 60e3 - i * HOUR
     let s: Scan = { id: `s${i}`, at, status: 'success', read: 186 - (i % 3), durationMin: 6 + (i % 4) }
-    if (i === 5) s = { ...s, status: 'partial', read: 142, durationMin: 11, note: 'انتهت مهلة 44 صفحة منتج' }
-    if (i === 11) s = { ...s, status: 'failed', read: 0, durationMin: 2, note: 'أمازون رجّع صفحة تحقق (CAPTCHA)' }
+    if (i === 5) s = { ...s, status: 'partial', read: 142, durationMin: 11, note: L('انتهت مهلة 44 صفحة منتج', '44 product pages timed out') }
+    if (i === 11) s = { ...s, status: 'failed', read: 0, durationMin: 2, note: L('أمازون رجّع صفحة تحقق (CAPTCHA)', 'Amazon returned a CAPTCHA page') }
     list.push(s)
   }
   if (scenario === 'partial') {
-    list[0] = { ...list[0], status: 'partial', read: 121, durationMin: 12, note: '65 منتج ما اتقراش — ظاهر آخر سعر ناجح' }
+    list[0] = { ...list[0], status: 'partial', read: 121, durationMin: 12, note: L('65 منتج ما اتقراش — ظاهر آخر سعر ناجح', '65 products not read — showing last successful price') }
   }
   if (scenario === 'failed') {
-    list[0] = { ...list[0], status: 'failed', read: 0, durationMin: 1, note: 'تعذّر الاتصال بـ amazon.eg (مهلة الشبكة)' }
+    list[0] = { ...list[0], status: 'failed', read: 0, durationMin: 1, note: L('تعذّر الاتصال بـ amazon.eg (مهلة الشبكة)', 'Could not reach amazon.eg (network timeout)') }
   }
   if (scenario === 'running') {
     list.unshift({ id: 'live', at: NOW - 2 * 60e3, status: 'running', read: 97 })

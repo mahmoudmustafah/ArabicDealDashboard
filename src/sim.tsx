@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NOW } from './data'
 import { cx } from './ui'
+import { isAr, L } from './i18n'
 
 /** Simulated clock that starts at the sample NOW and advances in real time (optionally sped up for preview). */
 export function useSimClock(speed: number) {
@@ -21,7 +22,13 @@ export function useSimClock(speed: number) {
 
 const tz = 'Africa/Cairo'
 export const clock = (t: number) =>
-  new Intl.DateTimeFormat('ar-EG-u-nu-latn', { hour: 'numeric', minute: '2-digit', second: '2-digit', timeZone: tz }).format(t)
+  new Intl.DateTimeFormat(isAr() ? 'ar-EG-u-nu-latn' : 'en-GB', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+    timeZone: tz,
+  }).format(t)
 
 export const mmss = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000))
@@ -37,6 +44,11 @@ export const Mm = ({ ms, className }: { ms: number; className?: string }) => (
 /** Relative time against a moving clock. */
 export function agoAt(now: number, t: number) {
   const s = Math.max(0, Math.round((now - t) / 1000))
+  if (!isAr()) {
+    if (s < 60) return `${s}s ago`
+    const m = Math.round(s / 60)
+    return m < 60 ? `${m} min ago` : `${Math.round(m / 60)}h ago`
+  }
   if (s < 60) return `منذ ${s} ثانية`
   const m = Math.round(s / 60)
   if (m < 60) return m === 1 ? 'منذ دقيقة' : m === 2 ? 'منذ دقيقتين' : m <= 10 ? `منذ ${m} دقائق` : `منذ ${m} دقيقة`
@@ -47,8 +59,8 @@ export function agoAt(now: number, t: number) {
 export function SpeedControl({ speed, setSpeed }: { speed: number; setSpeed: (n: number) => void }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[11px] font-semibold text-mute">سرعة المعاينة</span>
-      <div className="flex rounded-lg border border-dashed border-[#b8bec7] bg-white p-0.5">
+      <span className="text-[11px] font-semibold text-mute">{L('سرعة المعاينة', 'Preview speed')}</span>
+      <div className="flex rounded-lg border border-dashed border-line-strong bg-white p-0.5">
         {[1, 10, 30].map((s) => (
           <button
             key={s}

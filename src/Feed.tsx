@@ -3,30 +3,36 @@ import { useMemo, useState } from 'react'
 import { categories, DAY, HOUR, NOW, TRACKED_TOTAL, type CategoryId, type Scan } from './data'
 import { lastSuccess, statuses, type Enriched } from './deal'
 import { ago, time } from './format'
+import { L, tx, type T as Tx } from './i18n'
 import { OfferCard } from './OfferCard'
 import { cx, SampleTag } from './ui'
 
 type Sort = 'newest' | 'drop' | 'price'
 const priceRanges = {
-  all: { label: 'كل الأسعار', min: 0, max: Infinity },
-  u2: { label: 'أقل من 2,000 ج.م', min: 0, max: 2000 },
-  '2-6': { label: '2,000 – 6,000 ج.م', min: 2000, max: 6000 },
-  '6-12': { label: '6,000 – 12,000 ج.م', min: 6000, max: 12000 },
-  o12: { label: 'أكتر من 12,000 ج.م', min: 12000, max: Infinity },
+  all: { label: { ar: 'كل الأسعار', en: 'Any price' }, min: 0, max: Infinity },
+  u2: { label: { ar: 'أقل من 2,000 ج.م', en: 'Under EGP 2,000' }, min: 0, max: 2000 },
+  '2-6': { label: { ar: '2,000 – 6,000 ج.م', en: 'EGP 2,000 – 6,000' }, min: 2000, max: 6000 },
+  '6-12': { label: { ar: '6,000 – 12,000 ج.م', en: 'EGP 6,000 – 12,000' }, min: 6000, max: 12000 },
+  o12: { label: { ar: 'أكتر من 12,000 ج.م', en: 'Over EGP 12,000' }, min: 12000, max: Infinity },
 }
 const priceOptions = Object.fromEntries(Object.entries(priceRanges).map(([k, v]) => [k, v.label])) as Record<
   keyof typeof priceRanges,
-  string
+  Tx
 >
 const dealFilters = {
-  all: 'كل الحالات',
-  observed: 'نزول مرصود',
-  below_usual: 'أقل من المعتاد',
-  exceptional: 'نزول استثنائي — قيد التحقق',
-  insufficient: 'بيانات غير كافية',
-  advertised_only: 'خصم معلن فقط',
+  all: { ar: 'كل الحالات', en: 'All' },
+  observed: { ar: 'نزول مرصود', en: 'Observed drop' },
+  below_usual: { ar: 'أقل من المعتاد', en: 'Below usual' },
+  exceptional: { ar: 'نزول استثنائي — قيد التحقق', en: 'Exceptional drop — verifying' },
+  insufficient: { ar: 'بيانات غير كافية', en: 'Not enough data' },
+  advertised_only: { ar: 'خصم معلن فقط', en: 'Advertised discount only' },
 }
-const timeFilters = { all: 'أي وقت', '1h': 'آخر 3 ساعات', '24h': 'آخر 24 ساعة', '7d': 'آخر 7 أيام' }
+const timeFilters = {
+  all: { ar: 'أي وقت', en: 'Any time' },
+  '1h': { ar: 'آخر 3 ساعات', en: 'Last 3 hours' },
+  '24h': { ar: 'آخر 24 ساعة', en: 'Last 24 hours' },
+  '7d': { ar: 'آخر 7 أيام', en: 'Last 7 days' },
+}
 const timeMs = { all: Infinity, '1h': HOUR * 3, '24h': DAY, '7d': 7 * DAY }
 
 type Props = {
@@ -47,7 +53,7 @@ function Select<T extends string>({
 }: {
   value: T
   onChange: (v: T) => void
-  options: Record<T, string>
+  options: Record<T, Tx>
   label: string
 }) {
   return (
@@ -63,7 +69,7 @@ function Select<T extends string>({
       >
         {(Object.keys(options) as T[]).map((k) => (
           <option key={k} value={k}>
-            {k === 'all' ? `${label}: ${options[k]}` : options[k]}
+            {k === 'all' ? `${label}: ${tx(options[k])}` : tx(options[k])}
           </option>
         ))}
       </select>
@@ -134,17 +140,18 @@ export function Feed({ items, scans, saved, toggleSave, openId, open, goScans }:
         <div className="flex flex-col gap-3 rounded-2xl border border-fail/25 bg-fail-soft p-4 sm:flex-row sm:items-center">
           <AlertOctagon className="size-5 shrink-0 text-fail" />
           <div className="flex-1 text-[13.5px] leading-6">
-            <div className="font-bold text-fail">فشل آخر فحص — الساعة {time(latest.at)}</div>
+            <div className="font-bold text-fail">{L('فشل آخر فحص — الساعة', 'Last scan failed at')} {time(latest.at)}</div>
             <div className="text-body">
-              الأسعار الظاهرة من آخر فحص ناجح الساعة <b className="text-ink">{time(ok.at)}</b> ({ago(ok.at)}). وقت الفحص مكتوب
-              على كل منتج.
+              {L('الأسعار الظاهرة من آخر فحص ناجح الساعة', 'Prices shown are from the last successful scan at')}{' '}
+              <b className="text-ink">{time(ok.at)}</b> ({ago(ok.at)}).{' '}
+              {L('وقت الفحص مكتوب على كل منتج.', 'Each product shows when it was checked.')}
             </div>
           </div>
           <button
             onClick={goScans}
             className="h-9 rounded-lg border border-fail/30 bg-white px-3 text-[13px] font-semibold text-fail"
           >
-            تفاصيل الفحص
+            {L('تفاصيل الفحص', 'Scan details')}
           </button>
         </div>
       )}
@@ -152,11 +159,14 @@ export function Feed({ items, scans, saved, toggleSave, openId, open, goScans }:
         <div className="flex items-start gap-3 rounded-2xl border border-line bg-white p-4 text-[13.5px] leading-6">
           <Info className="mt-0.5 size-5 shrink-0 text-body" />
           <div className="flex-1">
-            <b>نتايج جزئية:</b> آخر فحص ({time(latest.at)}) قرا <span className="num font-semibold">{latest.read}</span> من{' '}
-            <span className="num">{TRACKED_TOTAL}</span> منتج. المنتجات اللي ما اتقرتش ظاهرة بآخر سعر ناجح من {time(ok.at)}.
+            <b>{L('نتايج جزئية:', 'Partial results:')}</b> {L('آخر فحص', 'the last scan')} ({time(latest.at)}){' '}
+            {L('قرا', 'read')} <span className="num font-semibold">{latest.read}</span> {L('من', 'of')}{' '}
+            <span className="num">{TRACKED_TOTAL}</span> {L('منتج.', 'products.')}{' '}
+            {L('المنتجات اللي ما اتقرتش ظاهرة بآخر سعر ناجح من', 'Products not read show their last successful price from')}{' '}
+            {time(ok.at)}.
           </div>
           <button onClick={goScans} className="shrink-0 text-[13px] font-semibold underline underline-offset-4">
-            سجل الفحص
+            {L('سجل الفحص', 'Scan history')}
           </button>
         </div>
       )}
@@ -165,26 +175,31 @@ export function Feed({ items, scans, saved, toggleSave, openId, open, goScans }:
           <Loader2 className="size-5 shrink-0 animate-spin text-ink" />
           <div className="flex-1">
             <div className="font-semibold">
-              جاري فحص أمازون مصر… <span className="num">{running.read}</span> / <span className="num">{TRACKED_TOTAL}</span>{' '}
-              منتج
+              {L('جاري فحص أمازون مصر…', 'Scanning Amazon Egypt…')} <span className="num">{running.read}</span> /{' '}
+              <span className="num">{TRACKED_TOTAL}</span> {L('منتج', 'products')}
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-canvas">
               <div className="h-full rounded-full bg-ink" style={{ width: `${(running.read / TRACKED_TOTAL) * 100}%` }} />
             </div>
           </div>
-          <span className="hidden text-[12px] text-mute sm:block">الأسعار الحالية من فحص {time(ok.at)}</span>
+          <span className="hidden text-[12px] text-mute sm:block">{L('الأسعار الحالية من فحص', 'Current prices from scan at')} {time(ok.at)}</span>
         </div>
       )}
 
       <section className="grid grid-cols-2 gap-3 @3xl:grid-cols-4">
-        <Stat label="عروض لقيناها" value={stats.offers} hint="فيها خصم معلن أو نزول مرصود" />
-        <Stat label="نزول مرصود" value={stats.observed} hint="اترصد قبل كده بسعر أعلى" tone="drop" />
-        <Stat label="ليها سجل سعر كافي" value={stats.sufficient} total={items.length} hint="10 قراءات على الأقل في 21 يوم" />
-        <Stat label="قيد التحقق" value={stats.pending} hint="نزول كبير مستني فحص تاني" tone="pending" />
+        <Stat label={L('عروض لقيناها', 'Offers found')} value={stats.offers} hint={L('فيها خصم معلن أو نزول مرصود', 'Advertised discount or observed drop')} />
+        <Stat label={L('نزول مرصود', 'Observed drops')} value={stats.observed} hint={L('اترصد قبل كده بسعر أعلى', 'Seen before at a higher price')} tone="drop" />
+        <Stat
+          label={L('ليها سجل سعر كافي', 'Enough price history')}
+          value={stats.sufficient}
+          total={items.length}
+          hint={L('10 قراءات على الأقل في 21 يوم', 'At least 10 readings over 21 days')}
+        />
+        <Stat label={L('قيد التحقق', 'Verifying')} value={stats.pending} hint={L('نزول كبير مستني فحص تاني', 'Large drop awaiting a second check')} tone="pending" />
       </section>
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 no-scrollbar lg:mx-0 lg:px-0">
-        {[{ id: 'all' as const, label: 'الكل' }, ...categories].map((c) => {
+        {[{ id: 'all' as const, label: { ar: 'الكل', en: 'All' } }, ...categories].map((c) => {
           const n = c.id === 'all' ? items.length : items.filter((i) => i.category === c.id).length
           return (
             <button
@@ -192,20 +207,20 @@ export function Feed({ items, scans, saved, toggleSave, openId, open, goScans }:
               onClick={() => setCat(c.id)}
               className={cx(
                 'flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold transition',
-                cat === c.id ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink hover:border-[#c9ced5]',
+                cat === c.id ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink hover:border-line-strong',
               )}
             >
-              {c.label}
+              {tx(c.label)}
               <span className={cx('num text-[11.5px]', cat === c.id ? 'text-white/60' : 'text-mute')}>{n}</span>
             </button>
           )
         })}
-        {['موبايلات', 'أجهزة منزلية'].map((l) => (
+        {[L('موبايلات', 'Mobiles'), L('أجهزة منزلية', 'Home appliances')].map((l) => (
           <span
             key={l}
             className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-line px-3.5 text-[13px] text-mute"
           >
-            {l} <span className="text-[11px]">· قريبًا</span>
+            {l} <span className="text-[11px]">· {L('قريبًا', 'Soon')}</span>
           </span>
         ))}
       </div>
@@ -213,12 +228,12 @@ export function Feed({ items, scans, saved, toggleSave, openId, open, goScans }:
       <section className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-3">
         <div className="flex gap-2">
           <label className="relative flex-1">
-            <span className="sr-only">بحث</span>
+            <span className="sr-only">{L('بحث', 'Search')}</span>
             <Search className="pointer-events-none absolute start-3 top-3 size-4 text-mute" />
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="دوّر على منتج… مثلًا: سامسونج، 27 بوصة"
+              placeholder={L('دوّر على منتج… مثلًا: سامسونج، 27 بوصة', 'Search products… e.g. Samsung, 27 inch')}
               className="h-10 w-full rounded-lg border border-line bg-canvas/60 ps-9 pe-3 text-[13.5px] outline-none placeholder:text-mute focus:border-ink focus:bg-white"
             />
           </label>
@@ -228,7 +243,7 @@ export function Feed({ items, scans, saved, toggleSave, openId, open, goScans }:
             className="relative inline-flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-[13px] font-semibold lg:hidden"
           >
             <SlidersHorizontal className="size-4" />
-            فلاتر
+            {L('فلاتر', 'Filters')}
             {activeFilters > 0 && (
               <span className="num grid size-5 place-items-center rounded-full bg-ink text-[11px] text-white">
                 {activeFilters}
@@ -237,15 +252,15 @@ export function Feed({ items, scans, saved, toggleSave, openId, open, goScans }:
           </button>
         </div>
         <div className={cx('gap-2 @xl:grid-cols-3 @5xl:grid-cols-[1fr_1.3fr_1fr_auto]', showFilters ? 'grid' : 'hidden lg:grid')}>
-          <Select label="السعر" value={pr} onChange={setPr} options={priceOptions} />
-          <Select label="حالة العرض" value={deal} onChange={setDeal} options={dealFilters} />
-          <Select label="وقت الرصد" value={tf} onChange={setTf} options={timeFilters} />
-          <div className="flex rounded-lg border border-line bg-canvas/60 p-0.5 @xl:col-span-3 @5xl:col-span-1" role="radiogroup" aria-label="الترتيب">
+          <Select label={L('السعر', 'Price')} value={pr} onChange={setPr} options={priceOptions} />
+          <Select label={L('حالة العرض', 'Deal status')} value={deal} onChange={setDeal} options={dealFilters} />
+          <Select label={L('وقت الرصد', 'Detected')} value={tf} onChange={setTf} options={timeFilters} />
+          <div className="flex rounded-lg border border-line bg-canvas/60 p-0.5 @xl:col-span-3 @5xl:col-span-1" role="radiogroup" aria-label={L('الترتيب', 'Sort')}>
             {(
               [
-                ['drop', 'أكبر نزول مرصود'],
-                ['newest', 'الأحدث'],
-                ['price', 'أقل سعر'],
+                ['drop', L('أكبر نزول مرصود', 'Biggest observed drop')],
+                ['newest', L('الأحدث', 'Newest')],
+                ['price', L('أقل سعر', 'Lowest price')],
               ] as [Sort, string][]
             ).map(([k, l]) => (
               <button
@@ -267,10 +282,10 @@ export function Feed({ items, scans, saved, toggleSave, openId, open, goScans }:
 
       <div className="flex items-center justify-between gap-2 text-[13px] text-body">
         <div>
-          <span className="num font-bold text-ink">{list.length}</span> عرض
+          <span className="num font-bold text-ink">{list.length}</span> {L('عرض', 'offers')}
           {staleCount > 0 && (
             <span className="ms-1 text-mute">
-              · <span className="num">{staleCount}</span> سعره قديم (أكتر من 24 ساعة)
+              · <span className="num">{staleCount}</span> {L('سعره قديم (أكتر من 24 ساعة)', 'with stale price (over 24 hours)')}
             </span>
           )}
         </div>
@@ -293,9 +308,9 @@ export function Feed({ items, scans, saved, toggleSave, openId, open, goScans }:
       ) : (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-white py-16 text-center">
           <Search className="size-6 text-mute" />
-          <div className="font-semibold">مفيش عروض بالفلاتر دي</div>
+          <div className="font-semibold">{L('مفيش عروض بالفلاتر دي', 'No offers match these filters')}</div>
           <button onClick={reset} className="inline-flex items-center gap-1 text-[13px] font-semibold underline underline-offset-4">
-            <X className="size-3.5" /> امسح الفلاتر
+            <X className="size-3.5" /> {L('امسح الفلاتر', 'Clear filters')}
           </button>
         </div>
       )}
