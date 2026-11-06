@@ -20,6 +20,14 @@ const D = '[\\d٠-٩]+(?:[.,][\\d٠-٩]+)?'
 
 export function parsePack(rawTitle: string): Pack {
   const out: Pack = {}
+  // Wipes are counted by the wipe. "4 packs" alone would price a pack as if it were one wipe.
+  if (/wipes?\b|مناديل|منديل/i.test(rawTitle)) {
+    const word = '(?:wipes?|منديل|مناديل)(?![\\p{L}])'
+    const packs = rawTitle.match(new RegExp(`(${D})\\s*[x×*]\\s*(${D})\\s*${word}`, 'iu'))
+    if (packs) return { qty: num(packs[1]) * num(packs[2]), unit: 'item' }
+    const count = rawTitle.match(new RegExp(`(${D})\\s*${word}`, 'iu'))
+    return count ? { qty: num(count[1]), unit: 'item' } : {}
+  }
   // "(11-18 KG)" on diapers is the baby's weight, not the pack's.
   const title = rawTitle.replace(new RegExp(`\\(?${D}\\s*[-–]\\s*${D}\\s*(?:kg|كجم|كيلو)\\)?`, 'gi'), ' ')
   // "6 x 330ml", "330ml x 6", "12×"
@@ -90,9 +98,12 @@ export function unitPrice(price: number, pack: Pack): { value: number; per: 'kg'
 const SMALL_PACK = 100 // g or ml
 const ABSURD_PER_KG_OR_L = 5000 // EGP
 
-/** The unit price worth showing in a post. "31,250 EGP per litre" for a 4 ml serum helps nobody. */
-export function postUnitPrice(price: number, pack: Pack) {
+const NOT_CONSUMABLE = /bottle|teat|sippy|رضاعة|بزازة|ببرونة/i
+
+/** The unit price worth showing in a post. "31,250 EGP per litre" for a 4 ml serum helps nobody, and a feeding bottle holds 330 ml without selling any. */
+export function postUnitPrice(price: number, pack: Pack, name = '') {
   const unit = unitPrice(price, pack)
+  if (unit && unit.per !== 'item' && NOT_CONSUMABLE.test(name)) return undefined
   if (!unit || unit.per === 'item') return unit
   if ((pack.value ?? 0) * (pack.qty ?? 1) < SMALL_PACK || unit.value > ABSURD_PER_KG_OR_L) return undefined
   return unit

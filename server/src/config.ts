@@ -24,6 +24,7 @@ export type CategoryId =
   | 'supermarket'
   | 'home-care'
   | 'diapers'
+  | 'baby-care'
 
 export type Category = { id: CategoryId; ar: string; en: string; supermarket?: boolean }
 
@@ -43,6 +44,7 @@ export const categories: Category[] = [
   { id: 'supermarket', ar: 'سوبرماركت', en: 'Supermarket', supermarket: true },
   { id: 'home-care', ar: 'منظفات ومستلزمات البيت', en: 'Home care', supermarket: true },
   { id: 'diapers', ar: 'حفاضات أطفال', en: 'Baby diapers', supermarket: true },
+  { id: 'baby-care', ar: 'مستلزمات الأطفال', en: 'Baby care', supermarket: true },
 ]
 
 export type Source = { id: SourceId; name: string; ar: string; baseUrl: string; enabled: boolean }
@@ -93,14 +95,22 @@ export const jobs: JobDef[] = [
   { id: 'amazon-deals-beauty', source: 'amazon', category: 'cosmetics', target: '/s?i=beauty&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 2, offsetSec: 240 },
   { id: 'amazon-deals-grocery', source: 'amazon', category: 'supermarket', target: '/s?i=grocery&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 2, offsetSec: 435 },
   { id: 'amazon-home-care', source: 'amazon', category: 'home-care', target: '/s?k=detergent&i=grocery', maxPages: 3, offsetSec: 1350, intervalMin: AMAZON_MIN },
-  { id: 'amazon-diapers', source: 'amazon', category: 'diapers', target: '/s?k=diapers&i=baby', maxPages: 3, offsetSec: 1500, intervalMin: AMAZON_MIN },
+  { id: 'amazon-diapers', source: 'amazon', category: 'diapers', target: '/s?k=diapers&i=baby', maxPages: 5, offsetSec: 1500, intervalMin: AMAZON_MIN },
+  { id: 'amazon-diaper-pants', source: 'amazon', category: 'diapers', target: '/s?k=diaper+pants&i=baby', maxPages: 3, offsetSec: 75, intervalMin: AMAZON_MIN },
+  { id: 'amazon-baby-wipes', source: 'amazon', category: 'baby-care', target: '/s?k=baby+wipes&i=baby', maxPages: 3, offsetSec: 525, intervalMin: AMAZON_MIN },
+  { id: 'amazon-baby-formula', source: 'amazon', category: 'baby-care', target: '/s?k=baby+formula&i=baby', maxPages: 2, offsetSec: 975, intervalMin: AMAZON_MIN },
+  { id: 'amazon-baby-bath', source: 'amazon', category: 'baby-care', target: '/s?k=baby+shampoo&i=baby', maxPages: 2, offsetSec: 1425, intervalMin: AMAZON_MIN },
   { id: 'noon-mobiles', source: 'noon', category: 'mobiles', target: 'electronics-and-mobiles/mobiles-and-accessories/mobiles-20905', maxPages: 5, offsetSec: 60 },
   { id: 'noon-tvs', source: 'noon', category: 'tvs', target: 'electronics-and-mobiles/television-and-video/televisions', maxPages: 4, offsetSec: 210 },
   { id: 'noon-perfumes', source: 'noon', category: 'perfumes', target: 'beauty/fragrance', maxPages: 4, offsetSec: 420 },
   { id: 'noon-cosmetics', source: 'noon', category: 'cosmetics', target: 'beauty/makeup-16142', maxPages: 4, offsetSec: 510 },
   { id: 'noon-supermarket', source: 'noon', category: 'supermarket', target: 'grocery-store', maxPages: 5, offsetSec: 570 },
   { id: 'noon-home-care', source: 'noon', category: 'home-care', target: 'grocery-store/home-care-and-cleaning', maxPages: 4, offsetSec: 150 },
-  { id: 'noon-diapers', source: 'noon', category: 'diapers', target: 'baby-products/diapering/diapers-noon', maxPages: 4, offsetSec: 330 },
+  { id: 'noon-diapers', source: 'noon', category: 'diapers', target: 'baby-products/diapering/diapers-noon', maxPages: 8, offsetSec: 330 },
+  { id: 'noon-baby-wipes', source: 'noon', category: 'baby-care', target: 'baby-products/diapering/wipes-and-holders', maxPages: 3, offsetSec: 240 },
+  { id: 'noon-baby-food', source: 'noon', category: 'baby-care', target: 'baby-products/baby-food', maxPages: 3, offsetSec: 390 },
+  { id: 'noon-baby-bath', source: 'noon', category: 'baby-care', target: 'baby-products/bathing-and-skin-care', maxPages: 3, offsetSec: 450 },
+  { id: 'noon-baby-feeding', source: 'noon', category: 'baby-care', target: 'baby-products/feeding-16153', maxPages: 2, offsetSec: 540 },
   // Emarati Scents rate-limits hard (HTTP 429), so each run reads one page and the adapter moves on to the next page next run.
   { id: 'emarati-men', source: 'emarati', category: 'mens-fragrance', target: 'men', maxPages: 1, offsetSec: 30, revisit: false },
   { id: 'emarati-women', source: 'emarati', category: 'womens-fragrance', target: 'women', maxPages: 1, offsetSec: 180, revisit: false },
@@ -186,6 +196,7 @@ export const categoryChannel: Partial<Record<CategoryId, Channel>> = {
   supermarket: 'supermarket',
   'home-care': 'supermarket',
   diapers: 'supermarket',
+  'baby-care': 'supermarket',
 }
 export const ownChannel = (category: string) => categoryChannel[category as CategoryId]
 

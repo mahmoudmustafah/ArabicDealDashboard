@@ -61,7 +61,7 @@ All three were checked against the live stores on 2026-11-06 with `pnpm scan-onc
 
 ## 5. Publication (DEFAULT unless marked)
 
-**Separate channels:** supermarket, home care and baby diapers post only to the supermarket channel, never to priority or general. Until `TELEGRAM_SUPERMARKET_CHAT_ID` is set they stay dry-run. `categoryChannel` in `config.ts` maps a category to its channel.
+**Separate channels:** supermarket, home care, baby diapers and baby care post only to the supermarket channel, never to priority or general. Until `TELEGRAM_SUPERMARKET_CHAT_ID` is set they stay dry-run. `categoryChannel` in `config.ts` maps a category to its channel.
 
 **Scan intervals:** Amazon category jobs run every 30 minutes, because Amazon blocks heavier scanning, and its 11.11 deals filter runs every 10. Noon and Emarati Scents run every 10. Each job sets its own `intervalMin`.
 

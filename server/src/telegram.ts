@@ -118,7 +118,7 @@ export function renderMessage(c: PostContent): Rendered {
       : `💰 <b>${num(c.price)} جنيه</b> · خصم <b>${pct}%</b>`,
   ]
   if (save > 0) lines.push('', `💸 هتوفّر <b>${num(save)} جنيه</b>`)
-  const unit = c.pack ? postUnitPrice(c.price, c.pack) : undefined
+  const unit = c.pack ? postUnitPrice(c.price, c.pack, c.name) : undefined
   if (unit) lines.push('', `⚖️ <b>${num(unit.value)} جنيه</b> / ${{ kg: 'كيلو', L: 'لتر', item: 'قطعة' }[unit.per]}`)
   lines.push('', evidenceLine(c))
   if (c.exceptional) lines.push('', '⚠️ نزول كبير، لسه بنتأكد منه')

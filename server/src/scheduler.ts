@@ -71,9 +71,9 @@ export function createScheduler(deps: ScanDeps, jobs: JobDef[] = allJobs) {
 
   return {
     start(tickMs = 5_000) {
-      // Slower jobs wait for their next slot, so a restart doesn't hit a store with all of them at once.
+      // Amazon and slower jobs wait for their next slot, so a restart doesn't hit a store with all of them at once.
       const now = deps.now()
-      for (const job of active) if (job.intervalMin) st.get(job.id)!.lastSlot = slotFor(job, now)
+      for (const job of active) if (job.intervalMin || job.source === 'amazon') st.get(job.id)!.lastSlot = slotFor(job, now)
       tick()
       timer = setInterval(tick, tickMs)
     },

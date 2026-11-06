@@ -36,6 +36,18 @@ test('Arabic diaper titles from Amazon', () => {
   assert.deepEqual(parsePack('زجاجة مياه بسعة 1.5 لتر من ايل'), { value: 1500, unit: 'ml' })
 })
 
+test('wipes are counted by the wipe', () => {
+  assert.deepEqual(parsePack('مناديل مبللة للاطفال من وايت، 72 منديل'), { qty: 72, unit: 'item' })
+  assert.deepEqual(parsePack('Angels Dry Wipes - 80 Wipes, 100% Cotton'), { qty: 80, unit: 'item' })
+  assert.deepEqual(parsePack('Baby Wipes 3 x 72 Wipes'), { qty: 216, unit: 'item' })
+  assert.deepEqual(parsePack('مناديل كومبليت كلين مبللة، عبوة 4'), {})
+})
+
+test('a feeding bottle has no price per litre', () => {
+  assert.equal(postUnitPrice(300, { value: 330, unit: 'ml' }, 'Anti-Colic Feeding Bottle 330ml'), undefined)
+  assert.deepEqual(postUnitPrice(171, { value: 750, unit: 'ml' }, 'شامبو للاطفال 750 مل')?.per, 'L')
+})
+
 test('a smaller pack is not the same product', () => {
   assert.equal(samePack(parsePack('Oil 1.5 L'), parsePack('Oil 750 ml')), false)
   assert.equal(samePack(parsePack('Oil 1.5 L'), parsePack('Oil 1.5 لتر')), true)

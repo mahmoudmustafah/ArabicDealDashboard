@@ -290,7 +290,7 @@ test('a delayed post is cancelled if the price moved and the shown discount fell
 })
 
 test('supermarket categories post only to their own channel, with no priority, however big the discount', async () => {
-  for (const category of ['supermarket', 'home-care', 'diapers'] as const) {
+  for (const category of ['supermarket', 'home-care', 'diapers', 'baby-care'] as const) {
     const w = world()
     const own: JobDef = { ...job, category }
     w.prices.set('A', 1000)

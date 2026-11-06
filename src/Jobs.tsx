@@ -45,6 +45,7 @@ const icons: Record<string, LucideIcon> = {
   supermarket: ShoppingBasket,
   'home-care': Droplets,
   diapers: Baby,
+  'baby-care': Baby,
 }
 
 type RunStatus = ScanRun['status']
