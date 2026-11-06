@@ -122,7 +122,7 @@ export function renderMessage(c: PostContent): Rendered {
   if (unit) lines.push('', `⚖️ <b>${num(unit.value)} جنيه</b> / ${{ kg: 'كيلو', L: 'لتر', item: 'قطعة' }[unit.per]}`)
   lines.push('', evidenceLine(c))
   if (c.exceptional) lines.push('', '⚠️ نزول كبير، لسه بنتأكد منه')
-  const promos = c.promos.slice(0, 3)
+  const promos = c.promos.filter((p) => !/\{[^}]*:/.test(p.text)).slice(0, 3)
   if (promos.length) lines.push('', ...promos.map(promoLine))
   lines.push('', `🏪 ${esc(store)}`, `🕒 اتأكدنا من السعر ${cairoTime(c.checkedAt)}`)
   lines.push('', [c.category ? tag(categoryById(c.category)?.ar ?? c.category) : '', tag(store)].filter(Boolean).join(' '))

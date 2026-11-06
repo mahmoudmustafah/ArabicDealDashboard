@@ -50,3 +50,8 @@ test('"real" wording only with enough history; captions stay under Telegram limi
 test('no "save 0" headline when there is no reference price', () => {
   for (let key = 0; key < 50; key++) assert.doesNotMatch(renderMessage({ ...base, key, refPrice: undefined }).html, /وفّر 0/)
 })
+
+test('promo text that is really CSS never reaches a post', () => {
+  const { html } = renderMessage({ key: 1, name: 'Remote', source: 'amazon', price: 450, refPrice: 1350, basis: 'advertised', pct: 67, promos: [{ kind: 'coupon', text: '.newCouponBadge { color: black; }' }], exceptional: false, checkedAt: 0, url: 'https://www.amazon.eg/dp/A' })
+  assert.doesNotMatch(html, /newCouponBadge/)
+})

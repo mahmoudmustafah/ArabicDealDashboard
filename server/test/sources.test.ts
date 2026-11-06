@@ -123,3 +123,8 @@ test('a screenshot must show the price we are posting', () => {
   assert.ok(!priceMatches('EGP 410.00', 228))
   assert.ok(!priceMatches('', 228))
 })
+
+test('amazon product: CSS inside a coupon badge is not read as text', () => {
+  const html = '<html><body><span id="productTitle">Remote</span><div id="corePrice_feature_div"><span class="a-price"><span class="a-offscreen">EGP 450.00</span></span></div><div id="couponBadgeRegularVpc"><style>.newCouponBadge { color: black; }</style>Save 10% coupon</div></body></html>'
+  assert.equal(parseAmazonProduct(html, 'B0GHRV41HB')?.promos?.[0].text, 'Save 10% coupon')
+})

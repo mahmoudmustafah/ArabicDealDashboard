@@ -71,6 +71,8 @@ export function parseAmazonProduct(html: string, asin: string): Listing | null {
 }
 
 function text(el: HTMLElement | null | undefined) {
+  // Amazon puts <style> blocks inside some badges, and their CSS would otherwise read as text.
+  el?.querySelectorAll('style, script').forEach((n) => n.remove())
   const t = el?.text.replace(/\s+/g, ' ').trim()
   return t || undefined
 }
