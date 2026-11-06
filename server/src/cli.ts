@@ -1,4 +1,5 @@
-import { jobs, telegram } from './config.ts'
+import { scheduleBackfill } from './backfill.ts'
+import { jobs, publication, telegram } from './config.ts'
 import { openDb } from './db.ts'
 import { repo as makeRepo } from './repo.ts'
 import { runJob } from './scanner.ts'
@@ -27,6 +28,18 @@ if (cmd === 'scan-once') {
     const r = await runJob({ db, repo, adapters, now: () => Date.now() }, job, Date.now())
     console.log(job.id.padEnd(22), r.status.padEnd(8), `pages ${r.pagesOk}/${r.pagesPlanned}`, `read ${r.productsRead}`, `new ${r.productsNew}`, `offers ${r.offersFound}`, r.error ?? '')
   }
+} else if (cmd === 'backfill') {
+  // pnpm backfill <category,category> [--dry]: post the strongest existing discounts in these categories, spaced out.
+  const [cats, flag] = ids
+  if (!cats) {
+    console.log('usage: backfill <category,category> [--dry]')
+    process.exit(1)
+  }
+  const db = openDb()
+  const dryRun = flag === '--dry'
+  const plan = scheduleBackfill(db, makeRepo(db), { categories: cats.split(','), minPct: publication.backfillMinPct, spacingMs: 3 * 60_000, maxAgeMs: 12 * 3_600_000, now: Date.now(), dryRun })
+  console.log(`${dryRun ? 'Would schedule' : 'Scheduled'} ${plan.length} posts, one every 3 minutes, strongest first`)
+  for (const x of plan.slice(0, 8)) console.log(`  ${Math.round(x.pct)}%  ${x.price}  ${x.p.source}  ${x.p.name.slice(0, 60)}`)
 } else if (cmd === 'telegram-setup') {
   if (!telegram.token) {
     console.log('Set TELEGRAM_BOT_TOKEN in server/.env first.')
@@ -62,6 +75,6 @@ if (cmd === 'scan-once') {
       }
   }
 } else {
-  console.log('usage: scan-once [jobId…] | telegram-setup [--test]')
+  console.log('usage: scan-once [jobId…] | telegram-setup [--test] | backfill <categories> [--dry]')
   process.exit(1)
 }

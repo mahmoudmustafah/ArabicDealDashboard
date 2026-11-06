@@ -6,6 +6,7 @@ import { routes } from '../src/api.ts'
 import { createPublisher, type PublisherDeps } from '../src/publisher.ts'
 import { repo as makeRepo } from '../src/repo.ts'
 import { runJob } from '../src/scanner.ts'
+import { scheduleBackfill } from '../src/backfill.ts'
 import { createScheduler } from '../src/scheduler.ts'
 import { FetchError, type Listing, type SourceAdapter } from '../src/sources/types.ts'
 import type { Photo, Sender } from '../src/telegram.ts'
@@ -312,4 +313,31 @@ test('the same product read with and without a seller stays one product, and is 
   const a = w.repo.upsertProduct(base, 'monitors', w.now)
   const b = w.repo.upsertProduct({ ...base, seller: 'noon Grocery' }, 'monitors', w.now)
   assert.equal(b.id, a.id)
+})
+
+test('backfill posts existing discounts once, strongest first and spaced out, rechecked, and skips any under the minimum', async () => {
+  const w = world()
+  w.repo.upsertProduct({ source: 'amazon', storeKey: 'A', name: 'Diapers A', url: 'https://www.amazon.eg/dp/A', price: 500, listPrice: 1000, available: true }, 'diapers', w.now)
+  w.repo.upsertProduct({ source: 'amazon', storeKey: 'B', name: 'Diapers B', url: 'https://www.amazon.eg/dp/B', price: 700, listPrice: 1000, available: true }, 'diapers', w.now)
+  w.prices.set('A', 500).set('B', 700)
+  w.db.prepare('UPDATE products SET list_price = 1000').run()
+  for (const key of ['A', 'B']) {
+    const p = w.db.prepare('SELECT id FROM products WHERE store_key = ?').get(key) as { id: number }
+    w.repo.recordObservation(p.id, { source: 'amazon', storeKey: key, name: key, url: 'x', price: key === 'A' ? 500 : 700, listPrice: 1000, available: true }, w.now, null)
+  }
+  w.db.prepare('UPDATE products SET list_price = 1000, available = 1').run()
+  const opts = { categories: ['diapers'], minPct: 25, spacingMs: 3 * MIN, maxAgeMs: 12 * 60 * MIN, now: w.now }
+  const plan = scheduleBackfill(w.db, w.repo, opts)
+  assert.deepEqual(plan.map((x) => x.p.store_key), ['A', 'B'])
+  assert.deepEqual(scheduleBackfill(w.db, w.repo, opts).length, 0, 'a second run schedules nothing')
+
+  await w.publisher.tick()
+  assert.equal(w.sent.length, 1, 'only the strongest is due')
+  assert.equal(w.sent[0].channel, 'supermarket')
+  assert.match(w.sent[0].html, /الخصم حسب الموقع/)
+  w.prices.set('B', 900) // 10% now: under the backfill minimum
+  w.advance(3 * MIN)
+  await w.publisher.tick()
+  assert.equal(w.sent.length, 1)
+  assert.equal(w.deliveries()[1].state, 'cancelled')
 })

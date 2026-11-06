@@ -5,6 +5,7 @@ import { HISTORY_WINDOW_MS } from './pipeline.ts'
 import { decide, minPctFor } from './policy.ts'
 import type { Attempt, DeliveryRow, OfferRow, ProductRow, Repo } from './repo.ts'
 import type { SourceAdapter } from './sources/types.ts'
+import { BACKFILL_REASON } from './backfill.ts'
 import { parsePack } from './units.ts'
 import { renderMessage, type Sender } from './telegram.ts'
 import type { SourceId } from './config.ts'
@@ -72,7 +73,8 @@ export function createPublisher(deps: PublisherDeps) {
       return { cancel: 'Product became unavailable before the general slot' }
     }
     repo.recordObservation(p.id, fresh, now, null)
-    const a = analyze(repo.history(p.id, now - HISTORY_WINDOW_MS), fresh.listPrice)
+    // A product page can omit the crossed-out price that the listing shows, so fall back to the last one read.
+    const a = analyze(repo.history(p.id, now - HISTORY_WINDOW_MS), fresh.listPrice ?? p.list_price ?? undefined)
     // Judge the deal on its own, ignoring this pending post (lastPost undefined).
     const again = decide(a, { now, available: true })
     if (!again.publish) {
@@ -107,7 +109,8 @@ export function createPublisher(deps: PublisherDeps) {
     // Recheck after the priority delay, and for any post that waited in the queue behind the hourly cap,
     // because a queued price can be hours old by the time its turn comes.
     const waited = now - offer.detected_at > P.maxAgeAtPublishMs
-    const delayed = d.channel !== 'priority' && (offer.priority === 1 || waited)
+    const backfill = offer.reason.startsWith(BACKFILL_REASON)
+    const delayed = d.channel !== 'priority' && (offer.priority === 1 || waited || backfill)
     if (delayed && !attempts().some((a) => a.recheck && a.ok)) {
       const r = await recheck(d, offer, p, now)
       if (r.retry) {
@@ -131,9 +134,10 @@ export function createPublisher(deps: PublisherDeps) {
 
     // The price may have moved since the decision. Never post a discount under the minimum for its basis.
     const shownPct = offer.ref_price ? ((offer.ref_price - price) / offer.ref_price) * 100 : offer.pct
-    if (shownPct < minPctFor[offer.basis as Basis]) {
+    const minPct = backfill ? P.backfillMinPct : minPctFor[offer.basis as Basis]
+    if (shownPct < minPct) {
       d.state = 'cancelled'
-      d.cancel_reason = `Discount is now ${Math.round(shownPct)}%, under the ${minPctFor[offer.basis as Basis]}% minimum`
+      d.cancel_reason = `Discount is now ${Math.round(shownPct)}%, under the ${minPct}% minimum`
       d.next_attempt_at = null
       save(d)
       return

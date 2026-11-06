@@ -166,6 +166,8 @@ export const publication = {
    */
   changedSince: Date.parse(process.env.PUBLISH_CHANGED_SINCE ?? '') || 0,
   discoveredSince: Date.parse(process.env.PUBLISH_DISCOVERED_SINCE ?? '') || 0,
+  /** A backfilled post is skipped if its discount is now under this. */
+  backfillMinPct: 25,
   /** A post shows the store's discount instead when our own drop is under this and the store's is bigger. */
   preferAdvertisedBelowPct: 15,
   /** DEFAULT(decision): offer must have been read successfully this recently to be published. */
