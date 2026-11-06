@@ -7,15 +7,15 @@ The business brief (§10, §12, §13, §16, §22) asks for every rule to be writ
 
 Every value lives in `src/config.ts`.
 
-## 1. Sources and collection (DEFAULT, needs verification)
+## 1. Sources and collection (DEFAULT)
 
 | Store | Method | Identity |
 |---|---|---|
 | Amazon Egypt | HTML search pages (`/s?k=…&page=N`) + product pages (`/dp/ASIN`) | ASIN + seller |
 | Noon Egypt | Noon's JSON catalog API (`/_svc/catalog/api/v3/u/egypt-en/…`) | SKU + seller |
-| Emarati Scents | Shopify JSON (`/collections/<handle>/products.json`) | Shopify variant id, so each size is its own product |
+| Emarati Scents | Shopify JSON (`/collections/<handle>/products.json`), one page per run because the store rate-limits hard (HTTP 429), so a large collection takes several runs to cover | Shopify variant id, so each size is its own product |
 
-These were written **without live access to the stores** (the build environment can't reach them). Before production, run `pnpm scan-once <jobId>` from a machine that can reach the stores, then fix any selector, path or collection handle that reports `layout_changed`.
+All three were checked against the live stores on 2026-11-06 with `pnpm scan-once <jobId>`. Rerun that after a store changes its site. A `layout_changed` or `blocked` run means the collector needs a look.
 
 **Risks:**
 - Amazon often serves CAPTCHAs to automated traffic. Those runs are reported as `blocked`, and the job stops early instead of hammering the store.

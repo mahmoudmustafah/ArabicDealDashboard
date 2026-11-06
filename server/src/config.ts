@@ -55,8 +55,7 @@ export const sources: Source[] = [
  * - noon:   a catalog path under /egypt-en/ (paged with ?page=N)
  * - emarati: a Shopify collection handle
  *
- * VERIFY: these entry points were written without live access to the stores and must
- * be checked against the real sites before production (POLICY.md §1).
+ * Entry points were checked against the live stores on 2026-11-06.
  */
 export type JobDef = {
   id: string
@@ -66,6 +65,8 @@ export type JobDef = {
   maxPages: number
   /** Stagger inside the 10-minute cycle so jobs don't all start together. */
   offsetSec: number
+  /** False when a store's rate limit leaves no room for per-product revisits. */
+  revisit?: boolean
 }
 
 export const jobs: JobDef[] = [
@@ -83,10 +84,11 @@ export const jobs: JobDef[] = [
   { id: 'noon-perfumes', source: 'noon', category: 'perfumes', target: 'beauty/fragrance', maxPages: 4, offsetSec: 420 },
   { id: 'noon-cosmetics', source: 'noon', category: 'cosmetics', target: 'beauty/makeup-16142', maxPages: 4, offsetSec: 510 },
   { id: 'noon-supermarket', source: 'noon', category: 'supermarket', target: 'grocery-store', maxPages: 5, offsetSec: 570 },
-  { id: 'emarati-men', source: 'emarati', category: 'mens-fragrance', target: 'men', maxPages: 2, offsetSec: 30 },
-  { id: 'emarati-women', source: 'emarati', category: 'womens-fragrance', target: 'women', maxPages: 2, offsetSec: 180 },
-  { id: 'emarati-oud', source: 'emarati', category: 'oud-bakhoor', target: 'oud-bakhoor', maxPages: 2, offsetSec: 330 },
-  { id: 'emarati-gifts', source: 'emarati', category: 'gift-sets', target: 'gift-sets', maxPages: 2, offsetSec: 480 },
+  // Emarati Scents rate-limits hard (HTTP 429), so each run reads one page and the adapter moves on to the next page next run.
+  { id: 'emarati-men', source: 'emarati', category: 'mens-fragrance', target: 'men', maxPages: 1, offsetSec: 30, revisit: false },
+  { id: 'emarati-women', source: 'emarati', category: 'womens-fragrance', target: 'women', maxPages: 1, offsetSec: 180, revisit: false },
+  { id: 'emarati-oud', source: 'emarati', category: 'oud-bakhoor', target: 'incense', maxPages: 1, offsetSec: 330, revisit: false },
+  { id: 'emarati-gifts', source: 'emarati', category: 'gift-sets', target: 'lattafa-luxury-gift-sets', maxPages: 1, offsetSec: 480, revisit: false },
 ]
 
 export const schedule = {

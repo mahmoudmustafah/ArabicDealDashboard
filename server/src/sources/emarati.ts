@@ -3,10 +3,13 @@ import { checkResponse, httpFetch } from './http.ts'
 import { FetchError, type Fetcher, type Listing, type PageResult, type SourceAdapter } from './types.ts'
 
 /**
- * Emarati Scents: assumed to be a Shopify store, so it uses Shopify's public JSON
+ * Emarati Scents is a Shopify store, so this uses Shopify's public JSON
  * (/collections/<handle>/products.json, /products/<handle>.js).
  * Every variant (size, e.g. 50 ml vs 100 ml) is a separate product, because the prices aren't comparable.
- * VERIFY: confirm the platform and collection handles on the live site.
+ *
+ * The store answers most requests with HTTP 429 (Retry-After: 60), even when they are 30 seconds apart.
+ * So a job reads one page per run and the next run continues from the next page. A large collection takes
+ * several runs to cover, and a 429 is reported as 'blocked' and read again next run, with no retry here.
  */
 const BASE = process.env.EMARATI_BASE_URL ?? 'https://emaratiscents.com'
 
@@ -56,13 +59,18 @@ export function parseShopifyCollection(body: string, pageSize: number): PageResu
 
 export function emaratiAdapter(fetcher: Fetcher = httpFetch): SourceAdapter {
   const PAGE = 250
+  /** Next page to read per collection. Kept in memory: after a restart a sweep starts again from page 1. */
+  const nextPage = new Map<string, number>()
   return {
     id: 'emarati',
-    async listingPage(job: JobDef, page: number) {
+    async listingPage(job: JobDef) {
+      const page = nextPage.get(job.target) ?? 1
       const url = `${BASE}/collections/${job.target}/products.json?limit=${PAGE}&page=${page}`
       const r = await fetcher(url, { headers: { accept: 'application/json' } })
       checkResponse(r, url)
-      return parseShopifyCollection(r.text, PAGE)
+      const res = parseShopifyCollection(r.text, PAGE)
+      nextPage.set(job.target, res.hasNext ? page + 1 : 1)
+      return { listings: res.listings, hasNext: false }
     },
     async product(variantId: string, productUrl: string) {
       const handle = new URL(productUrl).pathname.split('/products/')[1]?.split('/')[0]

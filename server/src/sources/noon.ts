@@ -4,7 +4,7 @@ import { FetchError, type Fetcher, type Listing, type PageResult, type SourceAda
 
 /**
  * Noon Egypt: reads Noon's JSON catalog API (the same data its web app renders).
- * VERIFY: endpoint paths and field names must be confirmed against live noon.com responses.
+ * Checked against live responses on 2026-11-06. The API does not report the current page, so it comes from the caller.
  */
 const SITE = 'https://www.noon.com/egypt-en'
 const API = 'https://www.noon.com/_svc/catalog/api/v3/u/egypt-en'
@@ -21,7 +21,6 @@ type NoonHit = {
   is_buyable?: boolean
   offer_code?: string
   flags?: string[]
-  deal_tag?: { text?: string }
   nudges?: { text?: string }[]
 }
 
@@ -40,14 +39,13 @@ const toListing = (h: NoonHit): Listing | null => {
     listPrice: sale && h.price && h.price > sale ? h.price : undefined,
     available: h.is_buyable ?? true,
     promos: [
-      ...(h.deal_tag?.text ? [{ kind: 'other' as const, text: h.deal_tag.text }] : []),
       ...(h.nudges ?? []).filter((n) => n.text && /coupon|code|buy|كوبون|اشتري/i.test(n.text)).map((n) => ({ kind: (/coupon|code|كوبون/i.test(n.text!) ? 'coupon' : 'multibuy') as 'coupon' | 'multibuy', text: n.text! })),
     ],
   }
 }
 
-export function parseNoonCatalog(body: string): PageResult {
-  let data: { hits?: NoonHit[]; nbPages?: number; page?: number }
+export function parseNoonCatalog(body: string, page = 1): PageResult {
+  let data: { hits?: NoonHit[]; nbPages?: number }
   try {
     data = JSON.parse(body)
   } catch {
@@ -56,7 +54,7 @@ export function parseNoonCatalog(body: string): PageResult {
   if (!Array.isArray(data.hits)) throw new FetchError('layout_changed', 'Noon catalog response had no hits')
   return {
     listings: data.hits.map(toListing).filter((x): x is Listing => !!x),
-    hasNext: (data.page ?? 1) < (data.nbPages ?? 1),
+    hasNext: page < (data.nbPages ?? 1),
   }
 }
 
@@ -94,11 +92,10 @@ export function noonAdapter(fetcher: Fetcher = httpFetch): SourceAdapter {
       const url = `${API}/${job.target}/?page=${page}&limit=50`
       const r = await fetcher(url, { headers })
       checkResponse(r, url)
-      return parseNoonCatalog(r.text)
+      return parseNoonCatalog(r.text, page)
     },
-    async product(sku: string, productUrl: string) {
-      const slug = productUrl.replace(SITE + '/', '').replace(/\/?$/, '/')
-      const url = `${API}/${slug}`
+    async product(sku: string) {
+      const url = `${API}/${sku}/p/`
       const r = await fetcher(url, { headers })
       checkResponse(r, url)
       return parseNoonProduct(r.text)

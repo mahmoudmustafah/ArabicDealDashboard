@@ -88,7 +88,7 @@ export async function runJob(deps: ScanDeps, job: JobDef, dueAt: number): Promis
   }
 
   // 2) Price-history revisits for known products not seen in this run's listings
-  if (!blocked) {
+  if (!blocked && job.revisit !== false) {
     const stale = (
       db
         .prepare(`SELECT * FROM products WHERE source = ? AND category = ? ORDER BY COALESCE(last_seen_at, 0) ASC LIMIT ?`)
