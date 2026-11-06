@@ -341,3 +341,26 @@ test('backfill posts existing discounts once, strongest first and spaced out, re
   assert.equal(w.sent.length, 1)
   assert.equal(w.deliveries()[1].state, 'cancelled')
 })
+
+test('a general backfill goes private first, then public after a recheck, and never touches own-channel categories', async () => {
+  const w = world()
+  const add = (key: string, category: 'monitors' | 'diapers', price: number) => {
+    const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: key, name: `Item ${key}`, url: `https://www.amazon.eg/dp/${key}`, price, listPrice: 1000, available: true }, category, w.now)
+    w.repo.recordObservation(id, { source: 'amazon', storeKey: key, name: key, url: 'x', price, listPrice: 1000, available: true }, w.now, null)
+    w.prices.set(key, price)
+  }
+  add('M', 'monitors', 500)
+  add('D', 'diapers', 400)
+  add('L', 'monitors', 700) // 30%: under this backfill's minimum
+  w.db.prepare('UPDATE products SET list_price = 1000, available = 1').run()
+  const plan = scheduleBackfill(w.db, w.repo, { categories: [], minPct: 40, spacingMs: 5 * MIN, maxAgeMs: 12 * 60 * MIN, now: w.now })
+  assert.deepEqual(plan.map((x) => x.p.store_key), ['M'])
+  await w.publisher.tick()
+  assert.deepEqual(w.sent.map((s) => s.channel), ['priority'])
+  assert.match(w.sent[0].html, /الخصم حسب الموقع/)
+  w.advance(5 * MIN)
+  w.prices.set('M', 800) // 20% now: under this backfill's 40% minimum
+  await w.publisher.tick()
+  assert.equal(w.sent.length, 1, 'the public post is skipped')
+  assert.equal(w.deliveries().find((d) => d.channel === 'general')?.state, 'cancelled')
+})

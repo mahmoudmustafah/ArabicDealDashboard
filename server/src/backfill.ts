@@ -1,4 +1,4 @@
-import { ownChannel } from './config.ts'
+import { publication as P, ownChannel } from './config.ts'
 import type { DB } from './db.ts'
 import { analyze } from './evaluate.ts'
 import { HISTORY_WINDOW_MS } from './pipeline.ts'
@@ -11,17 +11,27 @@ import type { ProductRow, Repo } from './repo.ts'
  */
 export const BACKFILL_REASON = 'backfill: existing store discount'
 
-export type BackfillOptions = { categories: string[]; minPct: number; spacingMs: number; maxAgeMs: number; now: number; dryRun?: boolean }
+export type BackfillOptions = {
+  /** Categories to include. Empty means every category without its own channel. */
+  categories: string[]
+  minPct: number
+  spacingMs: number
+  maxAgeMs: number
+  now: number
+  dryRun?: boolean
+}
 
 export function planBackfill(db: DB, repo: Repo, o: BackfillOptions) {
-  const marks = o.categories.map(() => '?').join(',')
-  const rows = db.prepare(`SELECT * FROM products WHERE category IN (${marks}) AND available = 1 AND list_price > 0 AND last_seen_at > ?`).all(...o.categories, o.now - o.maxAgeMs) as ProductRow[]
+  const rows = (db.prepare('SELECT * FROM products WHERE available = 1 AND list_price > 0 AND last_seen_at > ?').all(o.now - o.maxAgeMs) as ProductRow[]).filter((p) =>
+    o.categories.length ? o.categories.includes(p.category) : !ownChannel(p.category),
+  )
   const best = new Map<string, { p: ProductRow; pct: number; price: number; labels: string }>()
   const taken = db.prepare(`SELECT 1 FROM offers f JOIN products q ON q.id = f.product_id WHERE q.source = ? AND q.store_key = ? AND f.decision = 'publish' AND f.status IN ('scheduled', 'published')
     AND EXISTS (SELECT 1 FROM deliveries d WHERE d.offer_id = f.id AND d.dry_run = 0 AND d.state IN ('scheduled', 'retrying', 'sent'))`)
   for (const p of rows) {
     const a = analyze(repo.history(p.id, o.now - HISTORY_WINDOW_MS), p.list_price ?? undefined)
     if (!a.advertisedPct || a.advertisedPct < o.minPct) continue
+    if (a.inflatedBeforeDrop) continue // the higher price looks like a short hike before the drop
     if (taken.get(p.source, p.store_key)) continue
     // The same product can be stored twice. Keep it once.
     const key = `${p.source}:${p.store_key}`
@@ -38,7 +48,7 @@ export function scheduleBackfill(db: DB, repo: Repo, o: BackfillOptions) {
   try {
     plan.forEach(({ p, pct, price, labels }, i) => {
       const channel = ownChannel(p.category)
-      if (!channel) throw new Error(`Backfill is only for categories with their own channel: ${p.category}`)
+      const at = o.now + i * o.spacingMs
       const offerId = repo.insertOffer({
         product_id: p.id,
         detected_at: o.now,
@@ -47,12 +57,17 @@ export function scheduleBackfill(db: DB, repo: Repo, o: BackfillOptions) {
         basis: 'advertised',
         pct,
         labels,
-        priority: 0,
+        priority: channel ? 0 : 1,
         decision: 'publish',
-        reason: `${BACKFILL_REASON} ${Math.round(pct)}%`,
+        reason: `${BACKFILL_REASON} ${Math.round(pct)}% (min ${o.minPct}%)`,
         status: 'scheduled',
       })
-      repo.insertDelivery(offerId, channel, o.now + i * o.spacingMs, price)
+      if (channel) repo.insertDelivery(offerId, channel, at, price)
+      else {
+        // Same route as a new strong offer: private first, then public after the delay and a recheck.
+        repo.insertDelivery(offerId, 'priority', at, price)
+        repo.insertDelivery(offerId, 'general', at + P.generalDelayMs, price)
+      }
     })
     db.exec('COMMIT')
   } catch (e) {

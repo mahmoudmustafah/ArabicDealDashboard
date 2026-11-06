@@ -110,7 +110,7 @@ export function createPublisher(deps: PublisherDeps) {
     // because a queued price can be hours old by the time its turn comes.
     const waited = now - offer.detected_at > P.maxAgeAtPublishMs
     const backfill = offer.reason.startsWith(BACKFILL_REASON)
-    const delayed = d.channel !== 'priority' && (offer.priority === 1 || waited || backfill)
+    const delayed = backfill || (d.channel !== 'priority' && (offer.priority === 1 || waited))
     if (delayed && !attempts().some((a) => a.recheck && a.ok)) {
       const r = await recheck(d, offer, p, now)
       if (r.retry) {
@@ -134,7 +134,7 @@ export function createPublisher(deps: PublisherDeps) {
 
     // The price may have moved since the decision. Never post a discount under the minimum for its basis.
     const shownPct = offer.ref_price ? ((offer.ref_price - price) / offer.ref_price) * 100 : offer.pct
-    const minPct = backfill ? P.backfillMinPct : minPctFor[offer.basis as Basis]
+    const minPct = backfill ? Number(offer.reason.match(/\(min (\d+)%\)/)?.[1] ?? P.backfillMinPct) : minPctFor[offer.basis as Basis]
     if (shownPct < minPct) {
       d.state = 'cancelled'
       d.cancel_reason = `Discount is now ${Math.round(shownPct)}%, under the ${minPct}% minimum`
