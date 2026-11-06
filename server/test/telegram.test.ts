@@ -36,3 +36,13 @@ test('bank and coupon conditions, exceptional notice, same headline for the same
   assert.match(html, /⚠️ نزول كبير، لسه بنتأكد منه/)
   assert.equal(renderMessage(base).html.split('\n')[0], renderMessage({ ...base, price: 4800 }).html.split('\n')[0])
 })
+
+test('"real" wording only with enough history; captions stay under Telegram limits', () => {
+  for (let key = 0; key < 50; key++) {
+    const { html } = renderMessage({ ...base, key, sufficient: false })
+    assert.doesNotMatch(html, /بجد|حقيقي|حسبناها من تاريخ/)
+  }
+  const long = renderMessage({ ...base, name: 'x'.repeat(300), promos: Array.from({ length: 6 }, () => ({ kind: 'coupon' as const, text: '<b>' + 'y'.repeat(500) })) })
+  assert.ok(long.html.length < 1024)
+  assert.doesNotMatch(long.html, /<b>y/, 'store text is escaped')
+})

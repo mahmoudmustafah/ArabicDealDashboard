@@ -39,10 +39,10 @@ const cairoTime = (t: number) =>
   new Intl.DateTimeFormat('ar-EG', { timeZone: timezone, hour: 'numeric', minute: '2-digit' }).format(t)
 
 /**
- * Headlines in the channel's voice. Only deals backed by our own price history
- * may say "real" ("بجد", "حقيقي"). A store-advertised discount never does.
+ * Headlines in the channel's voice. Only deals backed by enough of our own price history
+ * (the ~21-day rule) may say "real" ("بجد", "حقيقي"). Newer or store-advertised deals use neutral ones.
  */
-const HOOKS: Record<'verified' | 'advertised', ((p: number, save: number) => string)[]> = {
+const HOOKS: Record<'verified' | 'neutral', ((p: number, save: number) => string)[]> = {
   verified: [
     (p) => `💥 نزل ${p}% بجد مش كلام!`,
     () => '👌 خصم حقيقي مش وهمي',
@@ -53,8 +53,10 @@ const HOOKS: Record<'verified' | 'advertised', ((p: number, save: number) => str
     () => '✨ لقطة لو محتاجه',
     () => '🛍 سعر حلو النهاردة',
   ],
-  advertised: [
+  neutral: [
     (p) => `🆕 نزل جديد وعليه خصم ${p}%!`,
+    () => '🔥 عرض جامد!',
+    () => '⚡ فرصة حلوة أوي!',
     () => '🆕 لسه نازل بخصم كبير',
     () => '✨ لقطة لو محتاجه',
     () => '💡 فرصة حلوة لو بتدور عليه',
@@ -72,14 +74,18 @@ function pick<T>(list: T[], key: number | string): T {
 function evidenceLine(c: PostContent) {
   if (c.basis === 'advertised') return 'ℹ️ الخصم حسب الموقع، ولسه بنتابع سعره بنفسنا'
   if (c.basis === 'below_usual') return '✅ قارناه بسعره المعتاد، مش باللي الموقع كاتبه'
-  if (!c.sufficient && c.lowestSeen) return 'ℹ️ لسه بنتابعه من قريب، بس ده أقل من كل اللي شفناه'
+  if (!c.sufficient)
+    return c.lowestSeen ? 'ℹ️ لسه بنتابعه من قريب، بس ده أقل من كل اللي شفناه' : 'ℹ️ شفناه بسعر أعلى قبل كده، ولسه بنتابع سعره'
   return pick(['✅ حسبناها من تاريخ سعره عندنا، مش السعر المشطوب', '✅ مقارنة بسعره الحقيقي من متابعتنا، مش السعر المشطوب'], c.key)
 }
 
 const BANK = /bank|card|بنك|كارت|بطاق/i
 
+const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s)
+
 function promoLine(p: Promo) {
-  const t = esc(p.text)
+  // Clip before escaping so a caption can never be cut inside an HTML tag (Telegram limit: 1024 chars).
+  const t = esc(clip(p.text.replace(/\s+/g, ' ').trim(), 120))
   if (BANK.test(p.text)) return `🏦 كود بنكي: ${t} (بكارت البنك فقط)`
   switch (p.kind) {
     case 'coupon': return `🎟 كوبون: ${t}`
@@ -96,8 +102,8 @@ export function renderMessage(c: PostContent): Rendered {
   const store = sourceById(c.source)?.ar ?? c.source
   const pct = Math.round(c.pct)
   const save = c.refPrice ? c.refPrice - c.price : 0
-  const verified = c.basis !== 'advertised'
-  const hook = pick(HOOKS[verified ? 'verified' : 'advertised'], c.key)(pct, save)
+  const verified = c.basis !== 'advertised' && !!c.sufficient
+  const hook = pick(HOOKS[verified ? 'verified' : 'neutral'], c.key)(pct, save)
   const name = c.name.length > 90 ? c.name.slice(0, 88).trimEnd() + '…' : c.name
 
   const lines = [
@@ -114,7 +120,7 @@ export function renderMessage(c: PostContent): Rendered {
   if (unit) lines.push(`⚖️ ${num(unit.value)} جنيه / ${{ kg: 'كيلو', L: 'لتر', item: 'قطعة' }[unit.per]}`)
   lines.push(evidenceLine(c))
   if (c.exceptional) lines.push('⚠️ نزول كبير، لسه بنتأكد منه')
-  for (const p of c.promos) lines.push(promoLine(p))
+  for (const p of c.promos.slice(0, 3)) lines.push(promoLine(p))
   lines.push(`🏪 ${esc(store)}`)
   lines.push(`🕒 اتأكدنا من السعر ${cairoTime(c.checkedAt)}`)
   lines.push('')
@@ -133,7 +139,7 @@ export const telegramSender: Sender = async (channel, html, image, button) => {
   const method = image ? 'sendPhoto' : 'sendMessage'
   const reply_markup = button ? { inline_keyboard: [[{ text: button.text, url: button.url }]] } : undefined
   const body = image
-    ? { chat_id: chatId, photo: image, caption: html.slice(0, 1024), parse_mode: 'HTML', reply_markup }
+    ? { chat_id: chatId, photo: image, caption: html, parse_mode: 'HTML', reply_markup }
     : { chat_id: chatId, text: html, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup }
   try {
     const res = await fetch(`https://api.telegram.org/bot${T.token}/${method}`, {
