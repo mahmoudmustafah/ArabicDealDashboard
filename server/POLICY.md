@@ -74,7 +74,7 @@ An offer is published to **General** if it's fresh (read in the last 20 minutes)
 
 There's also a cap of **30 General posts per hour**. Extra offers wait, strongest first.
 
-**Priority** applies when the discount is **40% or more**, on any basis. This is Mayar's decision from 2026-11-06. Those offers go to the private channel first, then to the general channel 5 minutes later after a price recheck. Everything else that qualifies goes straight to the general channel, including an exceptional drop under 40%, which keeps its "still verifying" notice. A post that waits behind the hourly cap is rechecked before it goes out.
+**Priority** applies when the discount is **40% or more**, on any basis. This is Mayar's decision from 2026-11-06. Those offers go to the private channel first, then to the general channel 5 minutes later after a price recheck. Everything else that qualifies goes straight to the general channel, including an exceptional drop under 40%, which keeps its "still verifying" notice. There is no hourly cap (Mayar's decision, 2026-11-06). Posts go one at a time, at least 3 seconds apart, and sending pauses when Telegram asks. Offers whose discount was already there post too, after fresh offers, and are rechecked first.
 
 The brief lets advertised discounts count toward priority, so `priorityAllowsAdvertised: true`. **Recommendation:** set this to `false`, so a 55% advertised claim we never verified doesn't go to the premium channel.
 

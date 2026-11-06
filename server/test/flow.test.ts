@@ -7,6 +7,7 @@ import { createPublisher, type PublisherDeps } from '../src/publisher.ts'
 import { repo as makeRepo } from '../src/repo.ts'
 import { runJob } from '../src/scanner.ts'
 import { scheduleBackfill } from '../src/backfill.ts'
+import { evaluateAndSchedule } from '../src/pipeline.ts'
 import { createScheduler } from '../src/scheduler.ts'
 import { FetchError, type Listing, type SourceAdapter } from '../src/sources/types.ts'
 import type { Photo, Sender } from '../src/telegram.ts'
@@ -363,4 +364,44 @@ test('a general backfill goes private first, then public after a recheck, and ne
   await w.publisher.tick()
   assert.equal(w.sent.length, 1, 'the public post is skipped')
   assert.equal(w.deliveries().find((d) => d.channel === 'general')?.state, 'cancelled')
+})
+
+test('a fresh offer goes ahead of the backlog, and backlog offers are rechecked first', async () => {
+  const w = world()
+  const add = (key: string, price: number, reason: string) => {
+    const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: key, name: `Item ${key}`, url: `https://www.amazon.eg/dp/${key}`, price, available: true }, 'monitors', w.now)
+    w.repo.recordObservation(id, { source: 'amazon', storeKey: key, name: key, url: 'x', price, listPrice: 1000, available: true }, w.now, null)
+    w.prices.set(key, price)
+    const offerId = w.repo.insertOffer({ product_id: id, detected_at: w.now, price, ref_price: 1000, basis: 'advertised', pct: 100 - price / 10, labels: '[]', priority: 0, decision: 'publish', reason, status: 'scheduled' })
+    w.repo.insertDelivery(offerId, 'general', w.now, price)
+  }
+  add('OLD', 300, 'advertised 70% (existing offer)')
+  add('NEW', 900, 'advertised 10%')
+  w.db.prepare('UPDATE products SET list_price = 1000').run()
+  await w.publisher.tick()
+  assert.deepEqual(w.sent.map((s) => /Item (\w+)/.exec(s.html)?.[1]), ['NEW', 'OLD'])
+})
+
+test('a discount that was already there still posts now, marked as backlog', async () => {
+  const w = world()
+  const own: JobDef = { ...job }
+  const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: 'A', name: 'A', url: 'x', price: 700, available: true }, own.category, w.now)
+  w.repo.recordObservation(id, { source: 'amazon', storeKey: 'A', name: 'A', url: 'x', price: 700, listPrice: 1000, available: true }, w.now, null)
+  w.db.prepare('UPDATE products SET list_price = 1000, available = 1').run()
+  const r = evaluateAndSchedule(w.db, w.repo, id, w.now)
+  assert.equal(r.decision?.publish, true)
+})
+
+test('a Telegram 429 pauses all sending until its retry time', async () => {
+  const w = world()
+  w.prices.set('A', 1000).set('B', 1000)
+  await history(w, 3)
+  w.prices.set('A', 500).set('B', 500)
+  await w.scan()
+  w.failSends(['rate'])
+  await w.publisher.tick()
+  assert.equal(w.sent.length, 0, 'nothing else goes out during the pause')
+  w.advance(11_000)
+  await w.publisher.tick()
+  assert.ok(w.sent.length > 0)
 })

@@ -29,7 +29,7 @@ if (cmd === 'scan-once') {
     console.log(job.id.padEnd(22), r.status.padEnd(8), `pages ${r.pagesOk}/${r.pagesPlanned}`, `read ${r.productsRead}`, `new ${r.productsNew}`, `offers ${r.offersFound}`, r.error ?? '')
   }
 } else if (cmd === 'backfill') {
-  // pnpm backfill <category,category | general> [minPct] [spacingMin] [--dry]: post the strongest existing discounts, spaced out.
+  // pnpm backfill <category,category | general> [minPct] [spacingMin] [--source=amazon] [--dry]: post the strongest existing discounts, spaced out.
   // "general" means every category without its own channel, routed like a new strong offer.
   const [cats, ...rest] = ids
   if (!cats) {
@@ -37,9 +37,10 @@ if (cmd === 'scan-once') {
     process.exit(1)
   }
   const dryRun = rest.includes('--dry')
-  const [minPct = publication.backfillMinPct, spacingMin = 3] = rest.filter((x) => x !== '--dry').map(Number)
+  const source = rest.find((x) => x.startsWith('--source='))?.slice('--source='.length)
+  const [minPct = publication.backfillMinPct, spacingMin = 3] = rest.filter((x) => !x.startsWith('--')).map(Number)
   const db = openDb()
-  const plan = scheduleBackfill(db, makeRepo(db), { categories: cats === 'general' ? [] : cats.split(','), minPct, spacingMs: spacingMin * 60_000, maxAgeMs: 12 * 3_600_000, now: Date.now(), dryRun })
+  const plan = scheduleBackfill(db, makeRepo(db), { categories: cats === 'general' ? [] : cats.split(','), source, minPct, spacingMs: spacingMin * 60_000, maxAgeMs: 12 * 3_600_000, now: Date.now(), dryRun })
   console.log(`${dryRun ? 'Would schedule' : 'Scheduled'} ${plan.length} offers, one every ${spacingMin} minutes, strongest first`)
   for (const x of plan.slice(0, 8)) console.log(`  ${Math.round(x.pct)}%  ${x.price}  ${x.p.source}  ${x.p.category}  ${x.p.name.slice(0, 50)}`)
 } else if (cmd === 'telegram-setup') {

@@ -22,7 +22,10 @@ export type Decision =
 
 const r1 = (n: number) => Math.round(n * 10) / 10
 
-/** New means the price changed after we first saw the product, or the product itself is new. Never a discount that was already there. */
+/** Marks a backlog offer in its reason. It posts after fresh offers, and is always rechecked first. */
+export const EXISTING_OFFER = '(existing offer)'
+
+/** New means the price changed after we first saw the product, or the product itself is new, not a discount that was already there. */
 export function isNewOffer(a: Pick<Analysis, 'detectedAt'>, discoveredAt: number, since = { changedSince: P.changedSince, discoveredSince: P.discoveredSince }) {
   if (discoveredAt >= since.discoveredSince) return true
   return a.detectedAt > discoveredAt && a.detectedAt >= since.changedSince

@@ -14,6 +14,8 @@ export const BACKFILL_REASON = 'backfill: existing store discount'
 export type BackfillOptions = {
   /** Categories to include. Empty means every category without its own channel. */
   categories: string[]
+  /** Only this store. */
+  source?: string
   minPct: number
   spacingMs: number
   maxAgeMs: number
@@ -23,7 +25,7 @@ export type BackfillOptions = {
 
 export function planBackfill(db: DB, repo: Repo, o: BackfillOptions) {
   const rows = (db.prepare('SELECT * FROM products WHERE available = 1 AND list_price > 0 AND last_seen_at > ?').all(o.now - o.maxAgeMs) as ProductRow[]).filter((p) =>
-    o.categories.length ? o.categories.includes(p.category) : !ownChannel(p.category),
+    (o.source ? p.source === o.source : true) && (o.categories.length ? o.categories.includes(p.category) : !ownChannel(p.category)),
   )
   const best = new Map<string, { p: ProductRow; pct: number; price: number; labels: string }>()
   const taken = db.prepare(`SELECT 1 FROM offers f JOIN products q ON q.id = f.product_id WHERE q.source = ? AND q.store_key = ? AND f.decision = 'publish' AND f.status IN ('scheduled', 'published')

@@ -2,7 +2,7 @@ import { evidence as E, ownChannel, publication as P, type Channel } from './con
 import { json, type DB } from './db.ts'
 import { analyze, type Basis } from './evaluate.ts'
 import { HISTORY_WINDOW_MS } from './pipeline.ts'
-import { decide, minPctFor } from './policy.ts'
+import { decide, EXISTING_OFFER, minPctFor } from './policy.ts'
 import type { Attempt, DeliveryRow, OfferRow, ProductRow, Repo } from './repo.ts'
 import type { SourceAdapter } from './sources/types.ts'
 import { BACKFILL_REASON } from './backfill.ts'
@@ -22,6 +22,8 @@ export type PublisherDeps = {
   adapters: Record<SourceId, SourceAdapter>
   send: Sender
   now: () => number
+  /** Gap between sends, so the bot stays under Telegram's limits. Default none. */
+  sendGapMs?: number
   /** Screenshot of the offer on the store page. Null or a failure falls back to the product image. */
   capture?: (channel: Channel, source: SourceId, url: string, price: number) => Promise<Buffer | null>
 }
@@ -32,8 +34,7 @@ export function createPublisher(deps: PublisherDeps) {
   const { db, repo } = deps
   const dueQ = db.prepare(`SELECT d.*, o.priority AS offer_priority, o.pct AS offer_pct FROM deliveries d JOIN offers o ON o.id = d.offer_id
     WHERE (d.state = 'scheduled' AND d.scheduled_at <= ?) OR (d.state = 'retrying' AND d.next_attempt_at <= ?)
-    ORDER BY d.channel = 'priority' DESC, o.pct DESC, d.scheduled_at`)
-  const sentLastHour = db.prepare(`SELECT COUNT(*) n FROM deliveries WHERE channel = ? AND state = 'sent' AND dry_run = 0 AND sent_at > ?`)
+    ORDER BY o.reason LIKE '%${EXISTING_OFFER}' ASC, d.channel = 'priority' DESC, o.pct DESC, d.scheduled_at LIMIT 300`)
   const offerQ = db.prepare('SELECT * FROM offers WHERE id = ?')
   const setState = db.prepare(
     'UPDATE deliveries SET state = ?, attempts = ?, next_attempt_at = ?, sent_at = ?, message_id = ?, dry_run = ?, cancel_reason = ?, posted_price = ? WHERE id = ?',
@@ -42,6 +43,7 @@ export function createPublisher(deps: PublisherDeps) {
   const setOfferStatus = db.prepare('UPDATE offers SET status = ? WHERE id = ?')
   const verifyOffer = db.prepare('UPDATE offers SET verified_at = ? WHERE id = ? AND verified_at IS NULL')
   let busy = false
+  let pausedUntil = 0
 
   function save(d: DeliveryRow) {
     setState.run(d.state, d.attempts, d.next_attempt_at, d.sent_at, d.message_id, d.dry_run, d.cancel_reason, d.posted_price, d.id)
@@ -101,16 +103,12 @@ export function createPublisher(deps: PublisherDeps) {
       return
     }
 
-    if (d.channel !== 'priority' && d.state === 'scheduled') {
-      const n = (sentLastHour.get(d.channel, now - 3_600_000) as { n: number }).n
-      if (n >= P.generalMaxPerHour) return // stays scheduled; strongest offers go first when a slot frees
-    }
-
     // Recheck after the priority delay, and for any post that waited in the queue behind the hourly cap,
     // because a queued price can be hours old by the time its turn comes.
     const waited = now - offer.detected_at > P.maxAgeAtPublishMs
     const backfill = offer.reason.startsWith(BACKFILL_REASON)
-    const delayed = backfill || (d.channel !== 'priority' && (offer.priority === 1 || waited))
+    const existing = offer.reason.endsWith(EXISTING_OFFER)
+    const delayed = backfill || existing || (d.channel !== 'priority' && (offer.priority === 1 || waited))
     if (delayed && !attempts().some((a) => a.recheck && a.ok)) {
       const r = await recheck(d, offer, p, now)
       if (r.retry) {
@@ -177,6 +175,7 @@ export function createPublisher(deps: PublisherDeps) {
       if (res.retryable && tries <= P.retryBackoffMs.length) {
         d.state = 'retrying'
         d.next_attempt_at = t + Math.max(res.retryAfterMs ?? 0, P.retryBackoffMs[tries - 1])
+        if (res.retryAfterMs) pausedUntil = t + res.retryAfterMs // Telegram asked us to wait, so stop sending altogether
       } else {
         d.state = 'failed'
         d.next_attempt_at = null
@@ -191,9 +190,17 @@ export function createPublisher(deps: PublisherDeps) {
       if (busy) return
       busy = true
       try {
-        const now = deps.now()
-        const due = dueQ.all(now, now) as Due[]
-        for (const d of due) await handle(d, deps.now())
+        // Pick the next one each time, so a fresh offer goes ahead of a long backlog that is still draining.
+        const handled = new Set<number>()
+        for (;;) {
+          const now = deps.now()
+          if (now < pausedUntil) break
+          const next = (dueQ.all(now, now) as Due[]).find((x) => !handled.has(x.id))
+          if (!next) break
+          handled.add(next.id)
+          await handle(next, now)
+          if (deps.sendGapMs) await new Promise((r) => setTimeout(r, deps.sendGapMs))
+        }
       } finally {
         busy = false
       }

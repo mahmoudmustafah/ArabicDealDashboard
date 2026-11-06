@@ -1,5 +1,5 @@
 import { startApi } from './api.ts'
-import { telegram } from './config.ts'
+import { publication, telegram } from './config.ts'
 import { createScreenshotter } from './screenshot.ts'
 import { openDb } from './db.ts'
 import { createPublisher } from './publisher.ts'
@@ -25,6 +25,7 @@ const publisher = createPublisher({
   adapters,
   send: telegramSender,
   now,
+  sendGapMs: publication.sendGapMs,
   // Dry runs send nothing, so they must not load store pages.
   capture: (channel, source, url, price) =>
     telegram.token && telegram.chatId(channel) ? screenshot(source, url, price) : Promise.resolve(null),

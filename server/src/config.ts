@@ -159,10 +159,7 @@ export const publication = {
   minObservedDropPct: 5,
   minBelowUsualPct: 5,
   minAdvertisedPct: 5,
-  /**
-   * Only new offers go out, nothing from before posting opened. An offer is new when its price changed after this time
-   * (epoch ms, 0 = no limit), or when the product itself first appeared after discoveredSince. Set in server/.env.
-   */
+  /** Offers whose discount was already there before these times count as backlog: they post, but after fresh ones. */
   changedSince: Date.parse(process.env.PUBLISH_CHANGED_SINCE ?? '') || 0,
   discoveredSince: Date.parse(process.env.PUBLISH_DISCOVERED_SINCE ?? '') || 0,
   /** A backfilled post is skipped if its discount is now under this. */
@@ -171,8 +168,8 @@ export const publication = {
   preferAdvertisedBelowPct: 15,
   /** DEFAULT(decision): offer must have been read successfully this recently to be published. */
   maxAgeAtPublishMs: 20 * 60_000,
-  /** DEFAULT(decision): cap to avoid flooding the general channel. Excess offers wait for the next hour, strongest first. */
-  generalMaxPerHour: 30,
+  /** Telegram's safe pace: one message at a time, at least this far apart. Mayar's decision (2026-11-06): no hourly cap. */
+  sendGapMs: 3_000,
 
   /** DEFAULT(decision): republish only if the price fell at least this much below the last posted price… */
   republishFurtherDropPct: 5,
