@@ -22,7 +22,7 @@ export function parsePack(rawTitle: string): Pack {
   const out: Pack = {}
   // Wipes are counted by the wipe. "4 packs" alone would price a pack as if it were one wipe.
   if (/wipes?\b|مناديل|منديل/i.test(rawTitle)) {
-    const word = '(?:wipes?|منديل|مناديل)(?![\\p{L}])'
+    const word = '(?:wipes?|منديل|مناديل|pcs|pieces?|قطعة)(?![\\p{L}])'
     const packs = rawTitle.match(new RegExp(`(${D})\\s*[x×*]\\s*(${D})\\s*${word}`, 'iu'))
     if (packs) return { qty: num(packs[1]) * num(packs[2]), unit: 'item' }
     const count = rawTitle.match(new RegExp(`(${D})\\s*${word}`, 'iu'))

@@ -41,6 +41,8 @@ test('wipes are counted by the wipe', () => {
   assert.deepEqual(parsePack('Angels Dry Wipes - 80 Wipes, 100% Cotton'), { qty: 80, unit: 'item' })
   assert.deepEqual(parsePack('Baby Wipes 3 x 72 Wipes'), { qty: 216, unit: 'item' })
   assert.deepEqual(parsePack('مناديل كومبليت كلين مبللة، عبوة 4'), {})
+  assert.deepEqual(parsePack('Penduline Baby Wipes With Extra 99% Water |70pcs'), { qty: 70, unit: 'item' })
+  assert.deepEqual(parsePack('Baby wipes with a soft and gentle formula 72 pieces'), { qty: 72, unit: 'item' })
 })
 
 test('a feeding bottle has no price per litre', () => {
