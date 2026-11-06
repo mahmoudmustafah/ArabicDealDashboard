@@ -1,5 +1,6 @@
 import { startApi } from './api.ts'
 import { telegram } from './config.ts'
+import { createScreenshotter } from './screenshot.ts'
 import { openDb } from './db.ts'
 import { createPublisher } from './publisher.ts'
 import { repo as makeRepo } from './repo.ts'
@@ -17,7 +18,17 @@ const now = () => Date.now()
 db.prepare(`UPDATE scan_runs SET status = 'failed', finished_at = ?, error = 'Interrupted by service restart' WHERE status = 'running'`).run(now())
 
 const scheduler = createScheduler({ db, repo, adapters, now })
-const publisher = createPublisher({ db, repo, adapters, send: telegramSender, now })
+const screenshot = createScreenshotter()
+const publisher = createPublisher({
+  db,
+  repo,
+  adapters,
+  send: telegramSender,
+  now,
+  // Dry runs send nothing, so they must not load store pages.
+  capture: (channel, source, url, price) =>
+    telegram.token && (channel === 'priority' ? telegram.priorityChatId : telegram.generalChatId) ? screenshot(source, url, price) : Promise.resolve(null),
+})
 
 if (telegram.dryRun) console.warn('[telegram] TELEGRAM_BOT_TOKEN not set: deliveries are recorded as dry-run, nothing is sent')
 
@@ -27,5 +38,5 @@ startApi({ db, repo, scheduler, now })
 
 process.on('SIGTERM', () => {
   scheduler.stop()
-  process.exit(0)
+  void screenshot.close().finally(() => process.exit(0))
 })

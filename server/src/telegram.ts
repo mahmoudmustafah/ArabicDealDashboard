@@ -132,23 +132,32 @@ export function renderMessage(c: PostContent): Rendered {
 
 export type SendResult = { ok: true; messageId: number | null; dryRun: boolean } | { ok: false; retryable: boolean; retryAfterMs?: number; error: string }
 
-export type Sender = (channel: 'priority' | 'general', html: string, image?: string, button?: Rendered['button']) => Promise<SendResult>
+/** A photo is a URL for Telegram to fetch, or image bytes to upload. */
+export type Photo = string | Buffer
+export type Sender = (channel: 'priority' | 'general', html: string, image?: Photo, button?: Rendered['button']) => Promise<SendResult>
 
 export const telegramSender: Sender = async (channel, html, image, button) => {
   const chatId = channel === 'priority' ? T.priorityChatId : T.generalChatId
   if (T.dryRun || !chatId) return { ok: true, messageId: null, dryRun: true }
   const method = image ? 'sendPhoto' : 'sendMessage'
   const reply_markup = button ? { inline_keyboard: [[{ text: button.text, url: button.url }]] } : undefined
-  const body = image
-    ? { chat_id: chatId, photo: image, caption: html, parse_mode: 'HTML', reply_markup }
-    : { chat_id: chatId, text: html, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup }
+  let request: RequestInit
+  if (Buffer.isBuffer(image)) {
+    const form = new FormData()
+    form.set('chat_id', chatId)
+    form.set('photo', new Blob([new Uint8Array(image)], { type: 'image/jpeg' }), 'offer.jpg')
+    form.set('caption', html)
+    form.set('parse_mode', 'HTML')
+    if (reply_markup) form.set('reply_markup', JSON.stringify(reply_markup))
+    request = { method: 'POST', body: form, signal: AbortSignal.timeout(40_000) }
+  } else {
+    const body = image
+      ? { chat_id: chatId, photo: image, caption: html, parse_mode: 'HTML', reply_markup }
+      : { chat_id: chatId, text: html, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup }
+    request = { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) }
+  }
   try {
-    const res = await fetch(`https://api.telegram.org/bot${T.token}/${method}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000),
-    })
+    const res = await fetch(`https://api.telegram.org/bot${T.token}/${method}`, request)
     const data = (await res.json()) as { ok: boolean; result?: { message_id: number }; description?: string; parameters?: { retry_after?: number } }
     if (data.ok) return { ok: true, messageId: data.result?.message_id ?? null, dryRun: false }
     if (res.status === 429)

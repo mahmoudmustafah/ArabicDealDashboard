@@ -2,9 +2,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { jobs } from '../src/config.ts'
-import { amazonAdapter, parseAmazonSearch } from '../src/sources/amazon.ts'
+import { amazonAdapter, parseAmazonProduct, parseAmazonSearch } from '../src/sources/amazon.ts'
 import { emaratiAdapter, parseShopifyCollection } from '../src/sources/emarati.ts'
 import { noonAdapter, parseNoonCatalog } from '../src/sources/noon.ts'
+import { priceMatches } from '../src/screenshot.ts'
 import { FetchError } from '../src/sources/types.ts'
 
 const fx = (f: string) => readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8')
@@ -106,4 +107,19 @@ test('emarati reads one page per run, moves on, wraps at the end, and retries th
   await a.listingPage(job, 1)
   await a.listingPage(job, 1)
   assert.deepEqual(pages, ['1', '2', '2', '1'])
+})
+
+test('amazon product: a price in the similar-items carousel is not this product\'s price', () => {
+  const carousel = '<div id="similar"><span class="a-price"><span class="a-offscreen">EGP 227.70</span></span></div>'
+  const noOffer = `<html><body><span id="productTitle">Lip set</span>${carousel}</body></html>`
+  assert.equal(parseAmazonProduct(noOffer, 'B0CY3BYW73'), null)
+  const withOffer = `<html><body><span id="productTitle">Lip set</span>${carousel}<div id="corePrice_feature_div"><span class="a-price"><span class="a-offscreen">EGP 410.00</span></span></div></body></html>`
+  assert.equal(parseAmazonProduct(withOffer, 'B0CY3BYW73')?.price, 410)
+})
+
+test('a screenshot must show the price we are posting', () => {
+  assert.ok(priceMatches('جنيه56.00', 56))
+  assert.ok(priceMatches('EGP 227.70', 228))
+  assert.ok(!priceMatches('EGP 410.00', 228))
+  assert.ok(!priceMatches('', 228))
 })

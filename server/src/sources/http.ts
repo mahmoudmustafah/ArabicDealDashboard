@@ -4,7 +4,7 @@ import { FetchError, type Fetcher } from './types.ts'
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
 
-const CAPTCHA = /captcha|robot check|validateCaptcha|automated access|are you a human|access denied/i
+export const CAPTCHA = /captcha|robot check|validateCaptcha|automated access|are you a human|access denied/i
 
 /** Default fetcher. It classifies failures so scan runs can report why coverage was incomplete. */
 export const httpFetch: Fetcher = async (url, init) => {

@@ -14,7 +14,15 @@ import { FetchError } from './sources/types.ts'
  *  - for a delayed general post: rechecks the offer first, then publishes, updates or cancels
  *  - sends, retries temporary failures with backoff, and keeps every attempt as history
  */
-export type PublisherDeps = { db: DB; repo: Repo; adapters: Record<SourceId, SourceAdapter>; send: Sender; now: () => number }
+export type PublisherDeps = {
+  db: DB
+  repo: Repo
+  adapters: Record<SourceId, SourceAdapter>
+  send: Sender
+  now: () => number
+  /** Screenshot of the offer on the store page. Null or a failure falls back to the product image. */
+  capture?: (channel: 'priority' | 'general', source: SourceId, url: string, price: number) => Promise<Buffer | null>
+}
 
 type Due = DeliveryRow & { offer_priority: number; offer_pct: number }
 
@@ -128,7 +136,8 @@ export function createPublisher(deps: PublisherDeps) {
       image: p.image ?? undefined,
       pack: p.pack_unit ? { value: p.pack_value ?? undefined, unit: p.pack_unit as 'g', qty: p.pack_qty ?? undefined } : undefined,
     })
-    const res = await deps.send(d.channel, msg.html, p.image ?? undefined, msg.button)
+    const shot = await deps.capture?.(d.channel, p.source, p.url, price).catch(() => null)
+    const res = await deps.send(d.channel, msg.html, shot ?? p.image ?? undefined, msg.button)
     const t = deps.now()
     const sendAttempts = attempts().filter((x) => !x.recheck)
     if (res.ok) {

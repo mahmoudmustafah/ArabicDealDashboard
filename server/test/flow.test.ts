@@ -3,12 +3,12 @@ import { test } from 'node:test'
 import type { JobDef, SourceId } from '../src/config.ts'
 import { openDb } from '../src/db.ts'
 import { routes } from '../src/api.ts'
-import { createPublisher } from '../src/publisher.ts'
+import { createPublisher, type PublisherDeps } from '../src/publisher.ts'
 import { repo as makeRepo } from '../src/repo.ts'
 import { runJob } from '../src/scanner.ts'
 import { createScheduler } from '../src/scheduler.ts'
 import { FetchError, type Listing, type SourceAdapter } from '../src/sources/types.ts'
-import type { Sender } from '../src/telegram.ts'
+import type { Photo, Sender } from '../src/telegram.ts'
 
 const MIN = 60_000
 const job: JobDef = { id: 'test-mon', source: 'amazon', category: 'monitors', target: '/s?k=x', maxPages: 2, offsetSec: 0 }
@@ -19,7 +19,7 @@ function world(start = Date.UTC(2026, 10, 5, 10)) {
   const prices = new Map<string, number | 'fail' | 'gone'>()
   let blockListing = false
   const listing = (key: string, price: number, listPrice?: number): Listing => ({
-    source: 'amazon', storeKey: key, name: `Monitor ${key}`, url: `https://www.amazon.eg/dp/${key}`, price, listPrice, available: true,
+    source: 'amazon', storeKey: key, name: `Monitor ${key}`, image: `https://img.test/${key}.jpg`, url: `https://www.amazon.eg/dp/${key}`, price, listPrice, available: true,
   })
   const store: SourceAdapter = {
     id: 'amazon',
@@ -40,21 +40,23 @@ function world(start = Date.UTC(2026, 10, 5, 10)) {
   const db = openDb(':memory:')
   const repo = makeRepo(db)
   const adapters = { amazon: store, noon: store, emarati: store } as Record<SourceId, SourceAdapter>
-  const sent: { channel: string; html: string }[] = []
+  const sent: { channel: string; html: string; image?: Photo }[] = []
+  const shots: { capture?: PublisherDeps['capture'] } = {}
   let sendResults: ('ok' | 'rate')[] = []
-  const send: Sender = async (channel, html) => {
+  const send: Sender = async (channel, html, image) => {
     const r = sendResults.shift() ?? 'ok'
     if (r === 'rate') return { ok: false, retryable: true, retryAfterMs: 1000, error: 'Telegram rate limit (429)' }
-    sent.push({ channel, html })
+    sent.push({ channel, html, image })
     return { ok: true, messageId: sent.length, dryRun: false }
   }
   const now = () => t
   const deps = { db, repo, adapters, now, gapMs: 0 }
-  const publisher = createPublisher({ ...deps, send })
+  const publisher = createPublisher({ ...deps, send, capture: (...a) => shots.capture?.(...a) ?? Promise.resolve(null) })
   return {
     db, repo, deps, publisher, prices, sent,
     advance: (ms: number) => (t += ms),
     get now() { return t },
+    shots,
     block: (b: boolean) => (blockListing = b),
     failSends: (r: ('ok' | 'rate')[]) => (sendResults = r),
     scan: () => runJob(deps, job, t),
@@ -240,4 +242,33 @@ test('api: offers carry evidence, last successful check and not-refreshed flag',
   const posts = api['GET /api/posts'](new URL('http://x/api/posts')) as { reason: string; deliveries: { channel: string }[] }[]
   assert.match(posts[0].reason, /observed drop 25%/)
   assert.deepEqual(posts[0].deliveries.map((d) => d.channel), ['general'])
+})
+
+async function priorityOffer() {
+  const w = world()
+  w.prices.set('A', 10000)
+  await history(w, 3)
+  w.prices.set('A', 4000)
+  await w.scan()
+  return w
+}
+
+test('a post uses the store-page screenshot when there is one', async () => {
+  const w = await priorityOffer()
+  const shot = Buffer.from('jpeg')
+  const asked: unknown[][] = []
+  w.shots.capture = async (...a) => (asked.push(a), shot)
+  await w.publisher.tick()
+  assert.equal(w.sent[0].image, shot)
+  assert.deepEqual(asked[0], ['priority', 'amazon', 'https://www.amazon.eg/dp/A', 4000])
+})
+
+test('a blocked or failed screenshot falls back to the product image and still publishes', async () => {
+  for (const capture of [async () => null, async () => Promise.reject(new Error('browser crashed'))]) {
+    const w = await priorityOffer()
+    w.shots.capture = capture
+    await w.publisher.tick()
+    assert.equal(w.sent[0].image, 'https://img.test/A.jpg')
+    assert.equal(w.deliveries()[0].state, 'sent')
+  }
 })

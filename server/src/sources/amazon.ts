@@ -48,15 +48,14 @@ export function parseAmazonProduct(html: string, asin: string): Listing | null {
   const root = parse(html)
   const name = text(root.querySelector('#productTitle'))
   if (!name) throw new FetchError('layout_changed', 'Amazon product page had no title')
-  const price = parsePrice(
-    text(root.querySelector('#corePrice_feature_div .a-price .a-offscreen')) ??
-      text(root.querySelector('#corePriceDisplay_desktop_feature_div .a-price .a-offscreen')) ??
-      text(root.querySelector('.a-price .a-offscreen')),
-  )
+  // Only this product's price block. A bare '.a-price' also matches the "similar items" carousel,
+  // which read other products' prices when a product had no main offer.
+  const core = root.querySelector('#corePrice_feature_div') ?? root.querySelector('#corePriceDisplay_desktop_feature_div')
+  const price = parsePrice(text(core?.querySelector('.a-price .a-offscreen')))
   const availText = text(root.querySelector('#availability')) ?? ''
   const unavailable = /currently unavailable|غير متوفر|out of stock/i.test(availText)
   if (!price) return unavailable ? { source: 'amazon', storeKey: asin, name, url: `${BASE}/dp/${asin}`, price: 0, available: false } : null
-  const listPrice = parsePrice(text(root.querySelector('.basisPrice .a-offscreen, .a-price.a-text-price .a-offscreen')))
+  const listPrice = parsePrice(text(core?.querySelector('.basisPrice .a-offscreen, .a-price.a-text-price .a-offscreen')))
   return {
     source: 'amazon',
     storeKey: asin,
