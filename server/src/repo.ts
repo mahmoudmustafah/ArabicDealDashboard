@@ -85,6 +85,8 @@ export function repo(db: DB) {
       FROM offers o
       WHERE o.product_id IN (SELECT q.id FROM products q JOIN products p ON q.source = p.source AND q.store_key = p.store_key WHERE p.id = ?)
         AND o.decision = 'publish' AND o.status IN ('scheduled', 'published')
+        -- A dry run never reached anyone, so it doesn't count as posted.
+        AND (o.status = 'scheduled' OR EXISTS (SELECT 1 FROM deliveries d WHERE d.offer_id = o.id AND d.state = 'sent' AND d.dry_run = 0))
       ORDER BY o.detected_at DESC LIMIT 1`),
     maxSince: db.prepare('SELECT MAX(price) m FROM observations WHERE product_id = ? AND t > ?'),
     lastSkip: db.prepare(`SELECT * FROM offers WHERE product_id = ? AND decision = 'skip' ORDER BY detected_at DESC LIMIT 1`),
