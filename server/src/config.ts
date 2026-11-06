@@ -162,6 +162,8 @@ export const publication = {
   /** Offers whose discount was already there before these times count as backlog: they post, but after fresh ones. */
   changedSince: Date.parse(process.env.PUBLISH_CHANGED_SINCE ?? '') || 0,
   discoveredSince: Date.parse(process.env.PUBLISH_DISCOVERED_SINCE ?? '') || 0,
+  /** Older offers post only from this discount. New ones post from 5%. Mayar's decision (2026-11-06), can be lowered later. */
+  existingMinPct: 15,
   /** A backfilled post is skipped if its discount is now under this. */
   backfillMinPct: 25,
   /** A post shows the store's discount instead when our own drop is under this and the store's is bigger. */

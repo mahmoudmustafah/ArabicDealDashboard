@@ -23,7 +23,10 @@ export function evaluateAndSchedule(db: DB, repo: Repo, productId: number, now: 
   const a = analyzeProduct(repo, productId, now)
   if (!a) return {}
   const p = repo.product(productId)!
-  const d = decide(a, { now, available: p.available === null ? null : !!p.available, lastPost: repo.lastPost(productId) })
+  const verdict = decide(a, { now, available: p.available === null ? null : !!p.available, lastPost: repo.lastPost(productId) })
+
+  const fresh = isNewOffer(a, p.discovered_at)
+  const d: Decision = verdict.publish && !fresh && verdict.pct < P.existingMinPct ? { ...verdict, publish: false, reason: `Older offer under ${P.existingMinPct}%` } : verdict
 
   if (!d.publish) {
     if (a.best && d.reason !== 'Already scheduled for publication' && repo.shouldLogSkip(productId, a.current.price, d.reason)) {
@@ -57,7 +60,7 @@ export function evaluateAndSchedule(db: DB, repo: Repo, productId: number, now: 
       labels: JSON.stringify(a.labels),
       priority: d.priority && !own ? 1 : 0,
       decision: 'publish',
-      reason: isNewOffer(a, p.discovered_at) ? d.reason : `${d.reason} ${EXISTING_OFFER}`,
+      reason: fresh ? d.reason : `${d.reason} ${EXISTING_OFFER}`,
       status: 'scheduled',
     })
     if (own) repo.insertDelivery(offerId, own, now, a.current.price)

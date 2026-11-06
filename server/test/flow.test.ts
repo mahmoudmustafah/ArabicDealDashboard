@@ -7,6 +7,7 @@ import { createPublisher, type PublisherDeps } from '../src/publisher.ts'
 import { repo as makeRepo } from '../src/repo.ts'
 import { runJob } from '../src/scanner.ts'
 import { scheduleBackfill } from '../src/backfill.ts'
+import { publication } from '../src/config.ts'
 import { evaluateAndSchedule } from '../src/pipeline.ts'
 import { createScheduler } from '../src/scheduler.ts'
 import { FetchError, type Listing, type SourceAdapter } from '../src/sources/types.ts'
@@ -246,6 +247,14 @@ test('api: offers carry evidence, last successful check and not-refreshed flag',
   assert.deepEqual(posts[0].deliveries.map((d) => d.channel), ['general'])
 })
 
+/** Treat everything in the test as older than the moment posting opened. */
+function postingOpenedLater(t: { after: (fn: () => void) => void }) {
+  const { changedSince, discoveredSince } = publication
+  publication.changedSince = Number.MAX_SAFE_INTEGER
+  publication.discoveredSince = Number.MAX_SAFE_INTEGER
+  t.after(() => Object.assign(publication, { changedSince, discoveredSince }))
+}
+
 async function priorityOffer() {
   const w = world()
   w.prices.set('A', 10000)
@@ -382,7 +391,8 @@ test('a fresh offer goes ahead of the backlog, and backlog offers are rechecked 
   assert.deepEqual(w.sent.map((s) => /Item (\w+)/.exec(s.html)?.[1]), ['NEW', 'OLD'])
 })
 
-test('a discount that was already there still posts now, marked as backlog', async () => {
+test('a discount that was already there still posts now, marked as backlog', async (t) => {
+  postingOpenedLater(t)
   const w = world()
   const own: JobDef = { ...job }
   const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: 'A', name: 'A', url: 'x', price: 700, available: true }, own.category, w.now)
@@ -390,6 +400,21 @@ test('a discount that was already there still posts now, marked as backlog', asy
   w.db.prepare('UPDATE products SET list_price = 1000, available = 1').run()
   const r = evaluateAndSchedule(w.db, w.repo, id, w.now)
   assert.equal(r.decision?.publish, true)
+  const offer = w.db.prepare("SELECT reason FROM offers WHERE decision = 'publish'").get() as { reason: string }
+  assert.match(offer.reason, /existing offer/)
+})
+
+test('an older offer needs 15%, while one with a changed price posts from 5%', async (t) => {
+  postingOpenedLater(t)
+  const w = world()
+  const seen = (key: string, price: number) => {
+    const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: key, name: key, url: 'x', price, available: true }, job.category, w.now)
+    w.repo.recordObservation(id, { source: 'amazon', storeKey: key, name: key, url: 'x', price, listPrice: 1000, available: true }, w.now, null)
+    w.db.prepare('UPDATE products SET list_price = 1000, available = 1 WHERE id = ?').run(id)
+    return id
+  }
+  assert.equal(evaluateAndSchedule(w.db, w.repo, seen('OLD', 900), w.now).decision?.publish, false)
+  assert.equal(evaluateAndSchedule(w.db, w.repo, seen('OLD2', 840), w.now).decision?.publish, true)
 })
 
 test('a Telegram 429 pauses all sending until its retry time', async () => {

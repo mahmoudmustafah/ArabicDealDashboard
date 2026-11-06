@@ -133,9 +133,10 @@ export function createPublisher(deps: PublisherDeps) {
     // The price may have moved since the decision. Never post a discount under the minimum for its basis.
     const shownPct = offer.ref_price ? ((offer.ref_price - price) / offer.ref_price) * 100 : offer.pct
     const minPct = backfill ? Number(offer.reason.match(/\(min (\d+)%\)/)?.[1] ?? P.backfillMinPct) : minPctFor[offer.basis as Basis]
-    if (shownPct < minPct) {
+    const minShown = existing ? Math.max(minPct, P.existingMinPct) : minPct
+    if (shownPct < minShown) {
       d.state = 'cancelled'
-      d.cancel_reason = `Discount is now ${Math.round(shownPct)}%, under the ${minPct}% minimum`
+      d.cancel_reason = `Discount is now ${Math.round(shownPct)}%, under the ${minShown}% minimum`
       d.next_attempt_at = null
       save(d)
       return
