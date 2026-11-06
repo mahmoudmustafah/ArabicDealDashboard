@@ -3,7 +3,7 @@ import { schedule, type SourceId } from './config.ts'
 import { CAPTCHA, parsePrice } from './sources/http.ts'
 
 /**
- * Screenshots of the offer on the store's own page, for Telegram posts.
+ * Desktop-sized screenshots of the offer on the store's own page, for Telegram posts.
  * This is best effort: any block, timeout or surprise returns null and the post uses the product image.
  * A screenshot is also a claim, so it is rejected unless the page shows the price we are about to post.
  * Blocks are not worked around.
@@ -24,8 +24,8 @@ type StoreView = {
 const stores: Record<SourceId, StoreView> = {
   amazon: {
     localize: (u) => `${u}${u.includes('?') ? '&' : '?'}language=ar_AE`,
-    price: '#corePrice_mobile_feature_div .a-price, #corePriceDisplay_mobile_feature_div .a-price, #apex_mobile_feature_div .a-price',
-    start: '#bylineInfo, #title',
+    price: '#corePriceDisplay_desktop_feature_div .a-price, #corePrice_feature_div .a-price',
+    start: '#ppd',
   },
   noon: {
     localize: (u) => u.replace('/egypt-en/', '/egypt-ar/'),
@@ -38,8 +38,9 @@ const stores: Record<SourceId, StoreView> = {
   },
 }
 
-const VIEW = { width: 430, height: 932 }
-const MAX_HEIGHT = 1300
+const VIEW = { width: 1280, height: 800 }
+const MAX_HEIGHT = 1000
+const MIN_HEIGHT = 800
 const PRICE_TOLERANCE = 0.02
 
 /** The price on the page must match the price we post. */
@@ -77,7 +78,7 @@ async function capture(page: Page, source: SourceId, url: string, expected: numb
   if (!priceBox) return null
   const startBox = s.start ? await page.locator(s.start).first().boundingBox().catch(() => null) : null
   const top = Math.max(0, (startBox?.y ?? 0) - 8)
-  const height = Math.min(MAX_HEIGHT, Math.max(priceBox.y + priceBox.height + 90 - top, 400))
+  const height = Math.min(MAX_HEIGHT, Math.max(priceBox.y + priceBox.height + 90 - top, MIN_HEIGHT))
   return page.screenshot({ type: 'jpeg', quality: 80, fullPage: true, clip: { x: 0, y: top, width: VIEW.width, height } })
 }
 
@@ -96,10 +97,10 @@ export function createScreenshotter(timeoutMs = 20_000): Screenshotter & { close
       const { devices } = await import('playwright-core')
       const b = await open()
       ctx = await b.newContext({
-        ...devices['iPhone 14 Pro Max'],
+        ...devices['Desktop Chrome'],
         viewport: VIEW,
         screen: VIEW,
-        deviceScaleFactor: 2,
+        deviceScaleFactor: 1.5,
         locale: 'ar-EG',
         timezoneId: 'Africa/Cairo',
       })
