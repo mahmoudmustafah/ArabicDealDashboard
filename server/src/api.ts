@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { categories, evidence as E, sources } from './config.ts'
+import { categories, evidence as E, sources, telegram } from './config.ts'
 import { json, type DB } from './db.ts'
 import { analyze, dailySummaries, type Analysis } from './evaluate.ts'
 import { HISTORY_WINDOW_MS } from './pipeline.ts'
@@ -104,7 +104,14 @@ export function routes(ctx: Ctx) {
   return {
     'GET /api/health': () => ({ ok: true, now: ctx.now() }),
 
-    'GET /api/meta': () => ({ sources, categories, rules: E }),
+    'GET /api/meta': () => ({
+      sources,
+      categories,
+      rules: E,
+      tracked: (db.prepare('SELECT COUNT(*) n FROM products').get() as { n: number }).n,
+      // Whether each destination is configured. Never the chat ids or the token.
+      telegram: { priority: !!(telegram.token && telegram.priorityChatId), general: !!(telegram.token && telegram.generalChatId) },
+    }),
 
     'GET /api/offers': (u: URL) => {
       const where: string[] = ['last_seen_at IS NOT NULL']
@@ -141,18 +148,16 @@ export function routes(ctx: Ctx) {
             : (b.evidence!.observedDropPct ?? 0) - (a.evidence!.observedDropPct ?? 0) || b.evidence!.best!.pct - a.evidence!.best!.pct,
       )
       const total = list.length
-      list = list.slice(0, Number(u.searchParams.get('limit') ?? 200))
-      return {
-        total,
-        stats: {
-          offers: total,
-          observed: list.filter((v) => v.evidence!.labels.includes('observed_drop')).length,
-          sufficient: list.filter((v) => v.evidence!.sufficient).length,
-          verifying: list.filter((v) => v.evidence!.labels.includes('exceptional')).length,
-          stale: list.filter((v) => v.stale).length,
-        },
-        offers: list,
+      // Stats describe every matching offer, not just the returned page.
+      const stats = {
+        offers: total,
+        observed: list.filter((v) => v.evidence!.labels.includes('observed_drop')).length,
+        sufficient: list.filter((v) => v.evidence!.sufficient).length,
+        verifying: list.filter((v) => v.evidence!.labels.includes('exceptional')).length,
+        stale: list.filter((v) => v.stale).length,
       }
+      list = list.slice(0, Number(u.searchParams.get('limit') ?? 200))
+      return { total, stats, offers: list }
     },
 
     'GET /api/products/:id': (_u: URL, id: string) => {

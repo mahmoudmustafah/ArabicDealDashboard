@@ -1,14 +1,14 @@
 import { Bookmark, History, Languages, Moon, Radar, Send, Store, Sun, Tag, Timer } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { buildScans, futureSources, products, type Scenario } from './data'
-import { enrich, lastSuccess } from './deal'
+import { api, useApi, type SourceId } from './api'
+import { lastSuccess, stores, toItem } from './deal'
 import { Detail } from './Detail'
 import { Feed } from './Feed'
 import { Jobs } from './Jobs'
 import { Telegram } from './Telegram'
 import { ago, date, time } from './format'
 import { ScanBadge, ScanHistory } from './ScanHistory'
-import { cx } from './ui'
+import { ApiDown, Loading, cx } from './ui'
 import { L, setLang, type Lang } from './i18n'
 import { Watchlist } from './Watchlist'
 
@@ -17,7 +17,7 @@ type View = 'feed' | 'watch' | 'scans' | 'jobs' | 'telegram'
 const titles = (): Record<View, { t: string; s: string }> => ({
   feed: {
     t: L('العروض', 'Offers'),
-    s: L('أقوى نزول مرصود في الأسعار — بالدليل من سجل السعر', 'The strongest observed price drops — with evidence from price history'),
+    s: L('أقوى العروض الحالية من أمازون ونون وإماراتي سنتس — بالدليل من سجل السعر', 'The strongest current offers from Amazon, Noon and Emarati Scents — with evidence from price history'),
   },
   watch: {
     t: L('قائمة المتابعة', 'Watchlist'),
@@ -39,16 +39,9 @@ const titles = (): Record<View, { t: string; s: string }> => ({
   },
   scans: {
     t: L('سجل الفحص', 'Scan history'),
-    s: L('كل فحص لأمازون مصر: وقته، حالته، وعدد المنتجات اللي اتقرت', 'Every Amazon Egypt scan: when it ran, its status and how many products were read'),
+    s: L('كل فحص في المتاجر التلاتة: وقته، حالته، وعدد المنتجات اللي اتقرت', 'Every scan across the three stores: when it ran, its status and how many products were read'),
   },
 })
-
-const scenarios = (): [Scenario, string][] => [
-  ['normal', L('ناجح', 'Success')],
-  ['running', L('جاري الفحص', 'Scanning')],
-  ['partial', L('جزئي', 'Partial')],
-  ['failed', L('فشل', 'Failed')],
-]
 
 type Theme = 'light' | 'dark'
 const stored = (k: string) => {
@@ -110,7 +103,7 @@ function Prefs({
   )
 }
 
-// Deep-link support for reviewing states, e.g. ?view=scans&scenario=failed&open=dell-s2721ds
+// Deep links, e.g. ?view=scans or ?open=123
 const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams()
 
 export default function App() {
@@ -119,15 +112,9 @@ export default function App() {
   // Set before children render so every L()/formatter call in this render uses the new language.
   setLang(lang)
   const [view, setView] = useState<View>((params.get('view') as View) || 'feed')
-  const [scenario, setScenario] = useState<Scenario>((params.get('scenario') as Scenario) || 'normal')
-  const [saved, setSaved] = useState(() => new Set(['odyssey-g5', 'dell-s2721ds', 'aoc-27g2sp', 'jbl-tune-520', 'mx-keys-s']))
-  const [openId, setOpenId] = useState<string | null>(() =>
-    params.has('open')
-      ? params.get('open') || null
-      : typeof window !== 'undefined' && window.innerWidth >= 1280
-        ? 'odyssey-g5'
-        : null,
-  )
+  // The detail panel opens only when asked for, never by default.
+  const [openId, setOpenId] = useState<number | null>(() => (Number(params.get('open')) > 0 ? Number(params.get('open')) : null))
+  const [saveError, setSaveError] = useState(false)
 
   useEffect(() => {
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
@@ -145,27 +132,63 @@ export default function App() {
     } catch {}
   }, [theme])
 
-  const scans = useMemo(() => buildScans(scenario), [scenario, lang])
-  const items = useMemo(() => enrich(products, scans), [scans, lang])
-  const ok = lastSuccess(scans)!
-  const latest = scans[0]
+  const metaQ = useApi(api.meta, 60_000)
+  const offersQ = useApi(api.offers, 60_000)
+  const watchQ = useApi(api.watchlist, 60_000)
+  const scansQ = useApi(() => api.scans(100), 30_000)
+  const info = metaQ.data
+  const scans = scansQ.data ?? []
+  const items = useMemo(() => (offersQ.data?.offers ?? []).map(toItem), [offersQ.data])
+  const watchItems = useMemo(() => (watchQ.data ?? []).map(toItem), [watchQ.data])
+  const saved = useMemo(() => new Set(watchItems.map((w) => w.id)), [watchItems])
+  const [pending, setPending] = useState<Map<number, boolean>>(new Map())
+  const savedNow = useMemo(() => {
+    const out = new Set(saved)
+    for (const [id, on] of pending) {
+      if (on) out.add(id)
+      else out.delete(id)
+    }
+    return out
+  }, [saved, pending])
+  const reloadWatch = watchQ.reload
   const toggleSave = useCallback(
-    (id: string) =>
-      setSaved((s) => {
-        const n = new Set(s)
-        if (n.has(id)) n.delete(id)
-        else n.add(id)
-        return n
-      }),
-    [],
+    (id: number) => {
+      const on = !savedNow.has(id)
+      setSaveError(false)
+      setPending((m) => new Map(m).set(id, on))
+      ;(on ? api.watch(id) : api.unwatch(id))
+        .catch(() => setSaveError(true))
+        .finally(() => {
+          reloadWatch()
+          // Let the reload land before dropping the optimistic state.
+          setTimeout(() => setPending((m) => {
+            const n = new Map(m)
+            n.delete(id)
+            return n
+          }), 1500)
+        })
+    },
+    [savedNow, reloadWatch],
   )
   const close = useCallback(() => setOpenId(null), [])
-  const opened = items.find((i) => i.id === openId)
-  const watchItems = items.filter((i) => saved.has(i.id))
+  const ok = lastSuccess(scans)
+  const latest = scans[0]
+  const apiDown = !!(offersQ.error && scansQ.error)
+  const retry = () => {
+    metaQ.reload()
+    offersQ.reload()
+    watchQ.reload()
+    scansQ.reload()
+  }
+  const storeStatus = (id: SourceId) => scans.find((r) => r.source === id && r.status !== 'running')?.status
+  const dot = (id: SourceId) => {
+    const st = storeStatus(id)
+    return st === 'success' ? 'bg-drop' : st === 'partial' ? 'bg-pending' : st === 'failed' ? 'bg-fail' : 'bg-line-strong'
+  }
 
   const nav = [
-    { id: 'feed' as const, label: L('العروض', 'Offers'), short: L('العروض', 'Offers'), icon: Tag, count: items.length as number | undefined },
-    { id: 'watch' as const, label: L('قائمة المتابعة', 'Watchlist'), short: L('المتابعة', 'Watchlist'), icon: Bookmark, count: saved.size as number | undefined },
+    { id: 'feed' as const, label: L('العروض', 'Offers'), short: L('العروض', 'Offers'), icon: Tag, count: (offersQ.data?.total) as number | undefined },
+    { id: 'watch' as const, label: L('قائمة المتابعة', 'Watchlist'), short: L('المتابعة', 'Watchlist'), icon: Bookmark, count: savedNow.size as number | undefined },
     { id: 'jobs' as const, label: L('عمليات البحث', 'Search jobs'), short: L('البحث', 'Jobs'), icon: Timer, count: undefined },
     { id: 'telegram' as const, label: L('النشر في تليجرام', 'Telegram'), short: L('تليجرام', 'Telegram'), icon: Send, count: undefined },
     { id: 'scans' as const, label: L('سجل الفحص', 'Scan history'), short: L('الفحص', 'Scans'), icon: History, count: undefined },
@@ -205,33 +228,16 @@ export default function App() {
 
         <div className="mt-7 px-5 text-[11px] font-semibold tracking-wide text-mute">{L('المصادر', 'Sources')}</div>
         <div className="mt-2 flex flex-col gap-0.5 px-3">
-          <div className="flex h-10 items-center gap-3 rounded-lg bg-canvas px-3 text-[13px] font-semibold">
-            <Store className="size-4" />
-            <span dir="ltr">Amazon Egypt</span>
-            <span className="ms-auto size-2 rounded-full bg-drop" aria-label={L('متصل', 'Connected')} />
-          </div>
-          <button
-            onClick={() => setView('jobs')}
-            className="flex h-10 items-center gap-3 rounded-lg px-3 text-start text-[13px] font-semibold hover:bg-canvas"
-          >
-            <Store className="size-4" />
-            <span dir="ltr">Noon Egypt</span>
-            <span className="ms-auto rounded bg-noon-soft px-1.5 text-[10px] font-semibold text-noon-ink">{L('جديد', 'New')}</span>
-          </button>
-          <button
-            onClick={() => setView('jobs')}
-            className="flex h-10 items-center gap-3 rounded-lg px-3 text-start text-[13px] font-semibold hover:bg-canvas"
-          >
-            <Store className="size-4" />
-            <span dir="ltr">Emarati Scents</span>
-            <span className="ms-auto rounded bg-emarati-soft px-1.5 text-[10px] font-semibold text-emarati-ink">{L('جديد', 'New')}</span>
-          </button>
-          {futureSources.map((s) => (
-            <div key={s} className="flex h-9 items-center gap-3 px-3 text-[13px] text-mute">
-              <Store className="size-4 opacity-50" />
-              {s}
-              <span className="ms-auto text-[10.5px]">{L('قريبًا', 'Soon')}</span>
-            </div>
+          {stores.map((st) => (
+            <button
+              key={st.id}
+              onClick={() => setView('jobs')}
+              className="flex h-10 items-center gap-3 rounded-lg px-3 text-start text-[13px] font-semibold hover:bg-canvas"
+            >
+              <Store className="size-4" />
+              <span dir="ltr">{st.label}</span>
+              <span className={cx('ms-auto size-2 rounded-full', dot(st.id))} />
+            </button>
           ))}
         </div>
 
@@ -241,17 +247,19 @@ export default function App() {
             onClick={() => setView('scans')}
             className={cx(
               'w-full rounded-xl border p-3 text-start',
-              latest.status === 'failed' ? 'border-fail/25 bg-fail-soft' : 'border-line bg-canvas/60',
+              latest?.status === 'failed' ? 'border-fail/25 bg-fail-soft' : 'border-line bg-canvas/60',
             )}
           >
             <div className="flex items-center justify-between">
               <span className="text-[11.5px] text-body">{L('آخر فحص ناجح', 'Last successful scan')}</span>
-              <ScanBadge s={latest.status} />
+              {latest && <ScanBadge s={latest.status} />}
             </div>
-            <div className="num mt-1 text-[18px] font-bold">{time(ok.at)}</div>
-            <div className="text-[11.5px] text-mute">
-              {date(ok.at)} · {ago(ok.at)}
-            </div>
+            <div className="num mt-1 text-[18px] font-bold">{ok ? time(ok.started_at) : '—'}</div>
+            {ok && (
+              <div className="text-[11.5px] text-mute">
+                {date(ok.started_at)} · {ago(ok.started_at)}
+              </div>
+            )}
           </button>
         </div>
       </aside>
@@ -264,86 +272,74 @@ export default function App() {
           </div>
           <div className="leading-4">
             <div className="text-[14px] font-bold">{L('رادار العروض', 'Deal Radar')}</div>
-            <div className="text-[11px] text-mute" dir="ltr">
-              Amazon Egypt
-            </div>
+            <div className="text-[11px] text-mute">{L('3 متاجر', '3 stores')}</div>
           </div>
           <button
             onClick={() => setView('scans')}
             className={cx(
               'ms-auto flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-start',
-              latest.status === 'failed' ? 'bg-fail-soft' : 'bg-canvas',
+              latest?.status === 'failed' ? 'bg-fail-soft' : 'bg-canvas',
             )}
           >
             <div className="leading-4">
-              <div className="text-[10.5px] text-body">{L('آخر فحص ناجح', 'Last scan')}</div>
-              <div className="num text-[13px] font-bold">{time(ok.at)}</div>
+              <div className="hidden text-[10.5px] text-body sm:block">{L('آخر فحص ناجح', 'Last scan')}</div>
+              <div className="num text-[13px] font-bold whitespace-nowrap">{ok ? time(ok.started_at) : '—'}</div>
             </div>
-            <ScanBadge s={latest.status} />
+            {latest && <ScanBadge s={latest.status} />}
           </button>
           <Prefs lang={lang} setLangState={setLangState} theme={theme} setTheme={setTheme} compact />
         </div>
       </header>
 
-      <main className={cx('@container min-h-screen pb-24 lg:ms-[232px] lg:pb-10', opened && 'lg:me-[540px]')}>
+      <main className={cx('@container min-h-screen pb-24 lg:ms-[232px] lg:pb-10', openId !== null && 'lg:me-[540px]')}>
         <div className="mx-auto max-w-[1200px] px-4 pt-5 lg:px-8 lg:pt-7">
           <div className="mb-5 flex flex-col gap-4 @3xl:flex-row @3xl:items-end @3xl:justify-between">
             <div>
-              <div className="mb-1 hidden items-center gap-2 text-[12px] font-semibold text-body lg:flex">
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 ring-1 ring-line">
-                  <Store className="size-3.5" />
-                  {L('المصدر:', 'Source:')} <span dir="ltr">Amazon Egypt</span>
-                </span>
-                <span className="text-mute">·</span>
-                <span>
-                  {L('آخر فحص ناجح', 'Last successful scan')} <b className="num text-ink">{time(ok.at)}</b> <span className="text-mute">({ago(ok.at)})</span>
-                </span>
-              </div>
+              {ok && (
+                <div className="mb-1 hidden items-center gap-2 text-[12px] font-semibold text-body lg:flex">
+                  {L('آخر فحص ناجح', 'Last successful scan')} <b className="num text-ink">{time(ok.started_at)}</b> <span className="text-mute">({ago(ok.started_at)})</span>
+                </div>
+              )}
               <h1 className="text-[24px] leading-8 font-bold tracking-tight lg:text-[28px] lg:leading-9">{titles()[view].t}</h1>
               <p className="mt-0.5 text-[13.5px] text-body">{titles()[view].s}</p>
             </div>
-            <div className={cx('flex flex-col gap-1', (view === 'jobs' || view === 'telegram') && 'hidden')}>
-              <span className="text-[11px] font-semibold text-mute">{L('معاينة حالة الفحص (للعرض فقط)', 'Preview scan state (demo only)')}</span>
-              <div className="flex rounded-lg border border-dashed border-line-strong bg-white p-0.5">
-                {scenarios().map(([k, l]) => (
-                  <button
-                    key={k}
-                    onClick={() => setScenario(k)}
-                    aria-pressed={scenario === k}
-                    className={cx(
-                      'h-8 flex-1 rounded-md px-3 text-[12.5px] font-semibold whitespace-nowrap transition',
-                      scenario === k ? (k === 'failed' ? 'bg-fail text-white' : 'bg-ink text-white') : 'text-body hover:text-ink',
-                    )}
-                  >
-                    {l}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
-          {view === 'feed' && (
-            <Feed
-              items={items}
-              scans={scans}
-              saved={saved}
-              toggleSave={toggleSave}
-              openId={openId}
-              open={setOpenId}
-              goScans={() => setView('scans')}
-            />
+          {apiDown && (
+            <div className="mb-5">
+              <ApiDown onRetry={retry} />
+            </div>
           )}
-          {view === 'watch' && (
-            <Watchlist items={watchItems} remove={toggleSave} open={setOpenId} goFeed={() => setView('feed')} />
+          {saveError && (
+            <div role="alert" className="mb-5 rounded-xl bg-fail-soft px-3.5 py-2.5 text-[12.5px] text-fail">
+              {L('ما قدرناش نحفظ التغيير في قائمة المتابعة. جرّب تاني.', 'Could not save that watchlist change. Please try again.')}
+            </div>
           )}
-          {view === 'jobs' && <Jobs />}
-          {view === 'telegram' && <Telegram />}
-          {view === 'scans' && <ScanHistory scans={scans} items={items} open={setOpenId} />}
+
+          {view === 'feed' &&
+            (offersQ.data ? (
+              <Feed items={items} scans={scans} info={info} saved={savedNow} toggleSave={toggleSave} openId={openId} open={setOpenId} goScans={() => setView('scans')} />
+            ) : offersQ.error ? (
+              !apiDown && <ApiDown onRetry={offersQ.reload} />
+            ) : (
+              <Loading />
+            ))}
+          {view === 'watch' &&
+            (watchQ.data ? (
+              <Watchlist items={watchItems} remove={toggleSave} open={setOpenId} goFeed={() => setView('feed')} />
+            ) : watchQ.error ? (
+              !apiDown && <ApiDown onRetry={watchQ.reload} />
+            ) : (
+              <Loading />
+            ))}
+          {view === 'jobs' && <Jobs info={info} />}
+          {view === 'telegram' && <Telegram info={info} openProduct={setOpenId} />}
+          {view === 'scans' && <ScanHistory info={info} open={setOpenId} />}
 
           <footer className="mt-10 border-t border-line pt-4 text-[11.5px] leading-5 text-mute">
             {L(
-              'كل المنتجات والأسعار وسجلات الفحص هنا بيانات تجريبية للتصميم، مش أسعار حقيقية من أمازون. "رادار العروض" مش تابع لأمازون.',
-              'All products, prices and scan logs here are sample data for design purposes, not real Amazon prices. Deal Radar is not affiliated with Amazon.',
+              'الأسعار مأخوذة من صفحات المتاجر وقت آخر فحص، وممكن تكون اتغيرت — اتأكد منها على المتجر قبل الشراء. "رادار العروض" مش تابع لأمازون أو نون أو إماراتي سنتس.',
+              'Prices are read from store pages at the last check and may have changed — confirm on the store before buying. Deal Radar is not affiliated with Amazon, Noon or Emarati Scents.',
             )}
           </footer>
         </div>
@@ -367,7 +363,7 @@ export default function App() {
         ))}
       </nav>
 
-      {opened && <Detail p={opened} saved={saved.has(opened.id)} onToggleSave={() => toggleSave(opened.id)} onClose={close} />}
+      {openId !== null && <Detail id={openId} saved={savedNow.has(openId)} onToggleSave={() => toggleSave(openId)} onClose={close} />}
     </div>
   )
 }
