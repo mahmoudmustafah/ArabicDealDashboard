@@ -1,4 +1,4 @@
-import { categoryById, sourceById, telegram as T, timezone } from './config.ts'
+import { categoryById, sourceById, telegram as T, timezone, type Channel } from './config.ts'
 import type { Basis } from './evaluate.ts'
 import type { Promo } from './sources/types.ts'
 import { postUnitPrice, type Pack } from './units.ts'
@@ -134,10 +134,10 @@ export type SendResult = { ok: true; messageId: number | null; dryRun: boolean }
 
 /** A photo is a URL for Telegram to fetch, or image bytes to upload. */
 export type Photo = string | Buffer
-export type Sender = (channel: 'priority' | 'general', html: string, image?: Photo, button?: Rendered['button']) => Promise<SendResult>
+export type Sender = (channel: Channel, html: string, image?: Photo, button?: Rendered['button']) => Promise<SendResult>
 
 export const telegramSender: Sender = async (channel, html, image, button) => {
-  const chatId = channel === 'priority' ? T.priorityChatId : T.generalChatId
+  const chatId = T.chatId(channel)
   if (T.dryRun || !chatId) return { ok: true, messageId: null, dryRun: true }
   const method = image ? 'sendPhoto' : 'sendMessage'
   const reply_markup = button ? { inline_keyboard: [[{ text: button.text, url: button.url }]] } : undefined

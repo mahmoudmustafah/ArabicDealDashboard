@@ -285,6 +285,31 @@ test('a delayed post is cancelled if the price moved and the shown discount fell
   await w.publisher.tick()
   const general = w.deliveries().find((d) => d.channel === 'general')!
   assert.equal(general.state, 'cancelled')
-  assert.match(general.cancel_reason!, /under the 15% minimum/)
+  assert.match(general.cancel_reason!, /under the 5% minimum/)
   assert.equal(w.sent.filter((s) => s.channel === 'general').length, 0)
+})
+
+test('supermarket categories post only to their own channel, with no priority, however big the discount', async () => {
+  for (const category of ['supermarket', 'home-care', 'diapers'] as const) {
+    const w = world()
+    const own: JobDef = { ...job, category }
+    w.prices.set('A', 1000)
+    for (let i = 0; i < 3; i++) {
+      await runJob(w.deps, own, w.now)
+      w.advance(10 * MIN)
+    }
+    w.prices.set('A', 400)
+    await runJob(w.deps, own, w.now)
+    await w.publisher.tick()
+    assert.deepEqual(w.deliveries().map((d) => [d.channel, d.state]), [['supermarket', 'sent']])
+    assert.deepEqual(w.sent.map((m) => m.channel), ['supermarket'])
+  }
+})
+
+test('the same product read with and without a seller stays one product, and is not posted twice', async () => {
+  const w = world()
+  const base = { source: 'noon' as const, storeKey: 'N1', name: 'Cleaner', url: 'https://www.noon.com/x', price: 76 }
+  const a = w.repo.upsertProduct(base, 'monitors', w.now)
+  const b = w.repo.upsertProduct({ ...base, seller: 'noon Grocery' }, 'monitors', w.now)
+  assert.equal(b.id, a.id)
 })

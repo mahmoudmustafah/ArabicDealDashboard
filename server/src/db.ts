@@ -95,7 +95,7 @@ CREATE INDEX IF NOT EXISTS offers_product ON offers (product_id, detected_at);
 CREATE TABLE IF NOT EXISTS deliveries (
   id              INTEGER PRIMARY KEY,
   offer_id        INTEGER NOT NULL REFERENCES offers(id),
-  channel         TEXT NOT NULL,        -- priority | general
+  channel         TEXT NOT NULL,        -- priority | general | supermarket
   scheduled_at    INTEGER NOT NULL,
   state           TEXT NOT NULL,        -- scheduled | sending | sent | retrying | failed | cancelled
   attempts        TEXT NOT NULL DEFAULT '[]',  -- JSON [{at, ok, error}]

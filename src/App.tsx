@@ -33,8 +33,8 @@ const titles = (): Record<View, { t: string; s: string }> => ({
   jobs: {
     t: L('عمليات البحث', 'Search jobs'),
     s: L(
-      'بحث تلقائي عن العروض على أمازون ونون وإماراتي سنتس في كل قسم كل 10 دقائق — إيه اللي شغال دلوقتي وإيه اللي خلص',
-      'Automatic deal searches on Amazon, Noon and Emarati Scents every 10 minutes per category — what is running and what has finished',
+      'بحث تلقائي عن العروض على أمازون ونون وإماراتي سنتس — إيه اللي شغال دلوقتي وإيه اللي خلص',
+      'Automatic deal searches on Amazon, Noon and Emarati Scents — what is running and what has finished',
     ),
   },
   scans: {

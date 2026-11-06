@@ -22,6 +22,8 @@ export type CategoryId =
   | 'oud-bakhoor'
   | 'gift-sets'
   | 'supermarket'
+  | 'home-care'
+  | 'diapers'
 
 export type Category = { id: CategoryId; ar: string; en: string; supermarket?: boolean }
 
@@ -39,6 +41,8 @@ export const categories: Category[] = [
   { id: 'oud-bakhoor', ar: 'عود وبخور', en: 'Oud & bakhoor' },
   { id: 'gift-sets', ar: 'مجموعات هدايا', en: 'Gift sets' },
   { id: 'supermarket', ar: 'سوبرماركت', en: 'Supermarket', supermarket: true },
+  { id: 'home-care', ar: 'منظفات ومستلزمات البيت', en: 'Home care', supermarket: true },
+  { id: 'diapers', ar: 'حفاضات أطفال', en: 'Baby diapers', supermarket: true },
 ]
 
 export type Source = { id: SourceId; name: string; ar: string; baseUrl: string; enabled: boolean }
@@ -63,27 +67,36 @@ export type JobDef = {
   category: CategoryId
   target: string
   maxPages: number
-  /** Stagger inside the 10-minute cycle so jobs don't all start together. */
+  /** Stagger inside the job's cycle so jobs don't all start together. */
   offsetSec: number
+  /** How often the job runs, in minutes. Default 10. */
+  intervalMin?: number
   /** False when a store's rate limit leaves no room for per-product revisits. */
   revisit?: boolean
 }
 
+/** Amazon blocks heavy scanning, so its category jobs run less often. Lower this to scan more. */
+const AMAZON_MIN = 30
+
 export const jobs: JobDef[] = [
-  { id: 'amazon-tvs', source: 'amazon', category: 'tvs', target: '/s?k=smart+tv&i=electronics', maxPages: 5, offsetSec: 30 },
-  { id: 'amazon-mobiles', source: 'amazon', category: 'mobiles', target: '/s?k=smartphone&i=electronics', maxPages: 5, offsetSec: 120 },
-  { id: 'amazon-perfumes', source: 'amazon', category: 'perfumes', target: '/s?k=perfume&i=beauty', maxPages: 4, offsetSec: 360 },
-  { id: 'amazon-cosmetics', source: 'amazon', category: 'cosmetics', target: '/s?k=makeup&i=beauty', maxPages: 4, offsetSec: 450 },
-  { id: 'amazon-monitors', source: 'amazon', category: 'monitors', target: '/s?k=monitor&i=computers', maxPages: 4, offsetSec: 0 },
-  { id: 'amazon-electronics', source: 'amazon', category: 'electronics', target: '/s?k=headphones&i=electronics', maxPages: 4, offsetSec: 270 },
-  { id: 'amazon-keyboards', source: 'amazon', category: 'keyboards', target: '/s?k=keyboard+mouse&i=computers', maxPages: 3, offsetSec: 330 },
-  { id: 'amazon-storage', source: 'amazon', category: 'storage', target: '/s?k=ssd&i=computers', maxPages: 3, offsetSec: 390 },
-  { id: 'amazon-supermarket', source: 'amazon', category: 'supermarket', target: '/s?k=grocery&i=grocery', maxPages: 5, offsetSec: 540 },
+  { id: 'amazon-tvs', source: 'amazon', category: 'tvs', target: '/s?k=smart+tv&i=electronics', maxPages: 5, offsetSec: 150, intervalMin: AMAZON_MIN },
+  { id: 'amazon-mobiles', source: 'amazon', category: 'mobiles', target: '/s?k=smartphone&i=electronics', maxPages: 5, offsetSec: 300, intervalMin: AMAZON_MIN },
+  { id: 'amazon-perfumes', source: 'amazon', category: 'perfumes', target: '/s?k=perfume&i=beauty', maxPages: 4, offsetSec: 750, intervalMin: AMAZON_MIN },
+  { id: 'amazon-cosmetics', source: 'amazon', category: 'cosmetics', target: '/s?k=makeup&i=beauty', maxPages: 4, offsetSec: 1050, intervalMin: AMAZON_MIN },
+  { id: 'amazon-monitors', source: 'amazon', category: 'monitors', target: '/s?k=monitor&i=computers', maxPages: 4, offsetSec: 0, intervalMin: AMAZON_MIN },
+  { id: 'amazon-electronics', source: 'amazon', category: 'electronics', target: '/s?k=headphones&i=electronics', maxPages: 4, offsetSec: 450, intervalMin: AMAZON_MIN },
+  { id: 'amazon-keyboards', source: 'amazon', category: 'keyboards', target: '/s?k=keyboard+mouse&i=computers', maxPages: 3, offsetSec: 600, intervalMin: AMAZON_MIN },
+  { id: 'amazon-storage', source: 'amazon', category: 'storage', target: '/s?k=ssd&i=computers', maxPages: 3, offsetSec: 900, intervalMin: AMAZON_MIN },
+  { id: 'amazon-supermarket', source: 'amazon', category: 'supermarket', target: '/s?k=grocery&i=grocery', maxPages: 5, offsetSec: 1200, intervalMin: AMAZON_MIN },
+  { id: 'amazon-home-care', source: 'amazon', category: 'home-care', target: '/s?k=detergent&i=grocery', maxPages: 3, offsetSec: 1350, intervalMin: AMAZON_MIN },
+  { id: 'amazon-diapers', source: 'amazon', category: 'diapers', target: '/s?k=diapers&i=baby', maxPages: 3, offsetSec: 1500, intervalMin: AMAZON_MIN },
   { id: 'noon-mobiles', source: 'noon', category: 'mobiles', target: 'electronics-and-mobiles/mobiles-and-accessories/mobiles-20905', maxPages: 5, offsetSec: 60 },
   { id: 'noon-tvs', source: 'noon', category: 'tvs', target: 'electronics-and-mobiles/television-and-video/televisions', maxPages: 4, offsetSec: 210 },
   { id: 'noon-perfumes', source: 'noon', category: 'perfumes', target: 'beauty/fragrance', maxPages: 4, offsetSec: 420 },
   { id: 'noon-cosmetics', source: 'noon', category: 'cosmetics', target: 'beauty/makeup-16142', maxPages: 4, offsetSec: 510 },
   { id: 'noon-supermarket', source: 'noon', category: 'supermarket', target: 'grocery-store', maxPages: 5, offsetSec: 570 },
+  { id: 'noon-home-care', source: 'noon', category: 'home-care', target: 'grocery-store/home-care-and-cleaning', maxPages: 4, offsetSec: 150 },
+  { id: 'noon-diapers', source: 'noon', category: 'diapers', target: 'baby-products/diapering/diapers-noon', maxPages: 4, offsetSec: 330 },
   // Emarati Scents rate-limits hard (HTTP 429), so each run reads one page and the adapter moves on to the next page next run.
   { id: 'emarati-men', source: 'emarati', category: 'mens-fragrance', target: 'men', maxPages: 1, offsetSec: 30, revisit: false },
   { id: 'emarati-women', source: 'emarati', category: 'womens-fragrance', target: 'women', maxPages: 1, offsetSec: 180, revisit: false },
@@ -92,7 +105,7 @@ export const jobs: JobDef[] = [
 ]
 
 export const schedule = {
-  /** Brief §5: every store/category combination every 10 minutes. */
+  /** Brief §5: each job every 10 minutes unless it sets its own interval. */
   cycleMs: 10 * 60_000,
   /** Product pages revisited per job run for known products missing from listings (oldest-checked first). */
   revisitBudget: 20,
@@ -122,17 +135,25 @@ export const evidence = {
 }
 
 export const publication = {
-  /** Priority when discount ≥ 50% or exceptional. Mayar's decision (2026-11-05): "50% and above" (the brief had strictly > 50%). */
-  priorityPct: 50,
+  /** The private channel gets offers of 40% or more. Mayar's decision (2026-11-06). */
+  priorityPct: 40,
   /** Brief §14: advertised discounts can route to priority. Set false to require observed evidence. */
   priorityAllowsAdvertised: true,
   /** Brief §15: general post for a priority offer, measured from discovery. */
   generalDelayMs: 5 * 60_000,
 
-  /** DEFAULT(decision): minimums for ordinary (general-channel) publication. Any one qualifies. */
-  minObservedDropPct: 15,
-  minBelowUsualPct: 10,
-  minAdvertisedPct: 40,
+  /** Minimums for publication, any one qualifies. Mayar's decision (2026-11-06): 5% on every basis. */
+  minObservedDropPct: 5,
+  minBelowUsualPct: 5,
+  minAdvertisedPct: 5,
+  /**
+   * Only new offers go out, nothing from before posting opened. An offer is new when its price changed after this time
+   * (epoch ms, 0 = no limit), or when the product itself first appeared after discoveredSince. Set in server/.env.
+   */
+  changedSince: Date.parse(process.env.PUBLISH_CHANGED_SINCE ?? '') || 0,
+  discoveredSince: Date.parse(process.env.PUBLISH_DISCOVERED_SINCE ?? '') || 0,
+  /** A post shows the store's discount instead when our own drop is under this and the store's is bigger. */
+  preferAdvertisedBelowPct: 15,
   /** DEFAULT(decision): offer must have been read successfully this recently to be published. */
   maxAgeAtPublishMs: 20 * 60_000,
   /** DEFAULT(decision): cap to avoid flooding the general channel. Excess offers wait for the next hour, strongest first. */
@@ -151,10 +172,26 @@ export const publication = {
   retryBackoffMs: [10_000, 60_000, 5 * 60_000],
 }
 
+export type Channel = 'priority' | 'general' | 'supermarket'
+
+/**
+ * Categories with a channel of their own. Their offers go only there, never to priority or general.
+ * With no chat id for that channel, deliveries stay dry-run. Add a row here to add another channel.
+ */
+export const categoryChannel: Partial<Record<CategoryId, Channel>> = {
+  supermarket: 'supermarket',
+  'home-care': 'supermarket',
+  diapers: 'supermarket',
+}
+export const ownChannel = (category: string) => categoryChannel[category as CategoryId]
+
 export const telegram = {
   token: process.env.TELEGRAM_BOT_TOKEN ?? '',
   priorityChatId: process.env.TELEGRAM_PRIORITY_CHAT_ID ?? '',
   generalChatId: process.env.TELEGRAM_GENERAL_CHAT_ID ?? '',
+  chatId(channel: Channel) {
+    return { priority: this.priorityChatId, general: this.generalChatId, supermarket: process.env.TELEGRAM_SUPERMARKET_CHAT_ID ?? '' }[channel]
+  },
   /** With no token, deliveries are recorded as dry-run and never shown as really sent. */
   get dryRun() {
     return !this.token

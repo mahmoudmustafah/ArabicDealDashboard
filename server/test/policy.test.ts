@@ -1,24 +1,32 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { analyze, type Obs } from '../src/evaluate.ts'
-import { decide, isPriority } from '../src/policy.ts'
+import { decide, isNewOffer, isPriority } from '../src/policy.ts'
 
 const NOW = Date.UTC(2026, 10, 5, 12)
 const H = 3_600_000
 const flat = (hours: number, price: number): Obs[] => Array.from({ length: hours }, (_, i) => ({ t: NOW - (hours - i) * H, price }))
 
-test('50% and above routes to priority; 49% does not', () => {
-  assert.equal(isPriority(analyze([...flat(5, 1000), { t: NOW, price: 500 }])), true, '50% observed is also exceptional (≥35%)')
-  // Advertised-only: exceptional does not apply
-  assert.equal(isPriority(analyze([{ t: NOW, price: 510 }], 1000)), false)
-  assert.equal(isPriority(analyze([{ t: NOW, price: 500 }], 1000)), true)
+test('40% and above routes to priority; 39% does not', () => {
+  assert.equal(isPriority(analyze([{ t: NOW, price: 610 }], 1000)), false)
+  assert.equal(isPriority(analyze([{ t: NOW, price: 600 }], 1000)), true)
+  assert.equal(isPriority(analyze([...flat(5, 1000), { t: NOW, price: 600 }])), true)
 })
 
-test('small observed drops are not published', () => {
-  const a = analyze([...flat(5, 1000), { t: NOW, price: 900 }])
+test('an exceptional drop under 40% is not priority, and keeps its label', () => {
+  const a = analyze([...flat(5, 1000), { t: NOW, price: 620 }])
+  assert.equal(a.exceptional, true)
+  assert.equal(isPriority(a), false)
   const d = decide(a, { now: NOW })
-  assert.equal(d.publish, false)
-  assert.match(d.reason, /minimums/)
+  assert.equal(d.publish && d.priority, false)
+})
+
+test('a drop under 5% is not published; 5% is', () => {
+  const low = decide(analyze([...flat(5, 1000), { t: NOW, price: 960 }]), { now: NOW })
+  assert.equal(low.publish, false)
+  assert.match(low.reason, /minimums/)
+  assert.equal(decide(analyze([...flat(5, 1000), { t: NOW, price: 950 }]), { now: NOW }).publish, true)
+  assert.equal(decide(analyze([{ t: NOW, price: 950 }], 1000), { now: NOW }).publish, true)
 })
 
 test('20% observed drop is published to general only', () => {
@@ -68,4 +76,13 @@ test('a strong observed drop still shows as observed, even with an advertised di
   const d = decide(analyze([...flat(5, 1000), { t: NOW, price: 800 }], 2000), { now: NOW })
   assert.equal(d.publish && d.basis, 'observed')
   assert.equal(d.publish && d.refPrice, 1000)
+})
+
+test('only new offers count: a price change or a new product, never an old discount', () => {
+  const since = { changedSince: 1000, discoveredSince: 5000 }
+  assert.equal(isNewOffer({ detectedAt: 100 }, 100, since), false, 'discount already there when first seen')
+  assert.equal(isNewOffer({ detectedAt: 2000 }, 2000, since), false, 'first seen during the first sweep of a new category')
+  assert.equal(isNewOffer({ detectedAt: 500 }, 100, since), false, 'price changed before posting opened')
+  assert.equal(isNewOffer({ detectedAt: 2000 }, 100, since), true, 'price changed after posting opened')
+  assert.equal(isNewOffer({ detectedAt: 6000 }, 6000, since), true, 'a product that first appeared later')
 })

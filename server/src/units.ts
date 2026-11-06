@@ -18,14 +18,18 @@ const UNITS: [RegExp, 'g' | 'ml', number][] = [
 
 const D = '[\\d٠-٩]+(?:[.,][\\d٠-٩]+)?'
 
-export function parsePack(title: string): Pack {
+export function parsePack(rawTitle: string): Pack {
   const out: Pack = {}
+  // "(11-18 KG)" on diapers is the baby's weight, not the pack's.
+  const title = rawTitle.replace(new RegExp(`\\(?${D}\\s*[-–]\\s*${D}\\s*(?:kg|كجم|كيلو)\\)?`, 'gi'), ' ')
   // "6 x 330ml", "330ml x 6", "12×"
   const multi =
     title.match(new RegExp(`(${D})\\s*[x×*]\\s*(${D})\\s*([a-zA-Z\\u0600-\\u06FF]+)`)) ??
     null
   const multiRev = title.match(new RegExp(`(${D})\\s*([a-zA-Z\\u0600-\\u06FF]+)\\s*[x×*]\\s*(${D})`))
-  const packOf = title.match(new RegExp(`(?:pack of|عبوة من|عدد|pcs|pieces|قطع(?:ة)?)\\s*(${D})|(${D})\\s*(?:pcs|pieces|pack|قطعة|قطع|حبة)\\b`, 'i'))
+  const packOf = title.match(new RegExp(`(?:pack of|عبوة من|عدد|pcs|pieces|قطع(?:ة)?)\\s*(${D})|(${D})[\\s-]*(?:pcs|pieces?|pack|قطعة|قطع|حبة)\\b|(${D})\\s+(?:baby\\s+)?(?:diapers?|حفاضة)\\b`, 'i'))
+  // "8+2 KG" is 10 kg with a free part, not 2 kg.
+  const bonus = title.match(new RegExp(`(${D})\\s*\\+\\s*(${D})\\s*([a-zA-Z\\u0600-\\u06FF]+)`))
 
   const sized = (n: string, u: string) => {
     for (const [re, unit, f] of UNITS) {
@@ -50,6 +54,11 @@ export function parsePack(title: string): Pack {
       return out
     }
   }
+  const bonusSize = bonus && sized(bonus[2], bonus[3])
+  if (bonusSize) {
+    Object.assign(out, { ...bonusSize, value: bonusSize.value + sized(bonus[1], bonus[3])!.value })
+    return out
+  }
   const single = [...title.matchAll(new RegExp(`(${D})\\s*([a-zA-Z\\u0600-\\u06FF]+)`, 'g'))]
   for (const m of single) {
     const s = sized(m[1], m[2])
@@ -58,7 +67,12 @@ export function parsePack(title: string): Pack {
       break
     }
   }
-  if (packOf) out.qty = num(packOf[1] ?? packOf[2])
+  if (packOf) out.qty = num(packOf[1] ?? packOf[2] ?? packOf[3])
+  // Diapers are compared per piece, whatever else the title says.
+  if (out.qty && /diaper|حفاض/i.test(title)) {
+    delete out.value
+    out.unit = 'item'
+  }
   if (!out.value && out.qty) out.unit = 'item'
   return out
 }

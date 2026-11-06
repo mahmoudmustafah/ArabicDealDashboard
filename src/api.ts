@@ -51,7 +51,7 @@ export type ProductView = {
 
 export type Attempt = { at: number; ok: boolean; error?: string; recheck?: boolean; dryRun?: boolean }
 export type Delivery = {
-  channel: 'priority' | 'general'
+  channel: 'priority' | 'general' | 'supermarket'
   state: 'scheduled' | 'retrying' | 'sent' | 'failed' | 'cancelled'
   scheduledAt: number
   nextAttemptAt: number | null
@@ -116,6 +116,7 @@ export type JobView = {
   id: string
   source: SourceId
   category: string
+  intervalMin: number
   state: 'idle' | 'queued' | 'running'
   dueAt: number | null
   nextDueAt: number | null
@@ -127,7 +128,7 @@ export type Meta = {
   sources: { id: SourceId; name: string; ar: string; enabled: boolean }[]
   categories: { id: string; ar: string; en: string }[]
   tracked: number
-  telegram: { priority: boolean; general: boolean }
+  telegram: { priority: boolean; general: boolean; supermarket: boolean }
 }
 export type OffersResponse = { total: number; offers: ProductView[] }
 

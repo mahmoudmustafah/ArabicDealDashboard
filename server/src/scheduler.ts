@@ -2,7 +2,7 @@ import { jobs as allJobs, schedule as S, sources, type JobDef, type SourceId } f
 import { runJob, type ScanDeps } from './scanner.ts'
 
 /**
- * Runs every store/category job every 10 minutes (brief §5), staggered by offset.
+ * Runs every store/category job on its own interval (10 minutes by default, brief §5), staggered by offset.
  * Jobs for the same store run one at a time (polite to the store). If a job is still
  * running when its next slot comes, that slot is recorded as overlapping and skipped,
  * never silently doubled. A job waiting behind its store's queue past the grace period
@@ -18,9 +18,12 @@ export type JobStatus = {
   overlaps: number
 }
 
+export const intervalMs = (job: JobDef) => (job.intervalMin ? job.intervalMin * 60_000 : S.cycleMs)
+
 export function slotFor(job: JobDef, t: number) {
   const off = job.offsetSec * 1000
-  return Math.floor((t - off) / S.cycleMs) * S.cycleMs + off
+  const every = intervalMs(job)
+  return Math.floor((t - off) / every) * every + off
 }
 
 export function createScheduler(deps: ScanDeps, jobs: JobDef[] = allJobs) {
@@ -67,9 +70,9 @@ export function createScheduler(deps: ScanDeps, jobs: JobDef[] = allJobs) {
   }
 
   return {
-    start(intervalMs = 5_000) {
+    start(tickMs = 5_000) {
       tick()
-      timer = setInterval(tick, intervalMs)
+      timer = setInterval(tick, tickMs)
     },
     stop() {
       if (timer) clearInterval(timer)
@@ -85,7 +88,7 @@ export function createScheduler(deps: ScanDeps, jobs: JobDef[] = allJobs) {
           job,
           state: s.state,
           dueAt: due,
-          nextDueAt: due + S.cycleMs,
+          nextDueAt: due + intervalMs(job),
           lastStartedDue: s.lastStartedDue,
           overdue: !started && now - due > S.overdueGraceMs,
           overlaps: s.overlaps,

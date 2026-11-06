@@ -110,7 +110,7 @@ export function routes(ctx: Ctx) {
       rules: E,
       tracked: (db.prepare('SELECT COUNT(*) n FROM products').get() as { n: number }).n,
       // Whether each destination is configured. Never the chat ids or the token.
-      telegram: { priority: !!(telegram.token && telegram.priorityChatId), general: !!(telegram.token && telegram.generalChatId) },
+      telegram: { priority: !!(telegram.token && telegram.priorityChatId), general: !!(telegram.token && telegram.generalChatId), supermarket: !!(telegram.token && telegram.chatId('supermarket')) },
     }),
 
     'GET /api/offers': (u: URL) => {
@@ -204,6 +204,7 @@ export function routes(ctx: Ctx) {
         id: s.job.id,
         source: s.job.source,
         category: s.job.category,
+        intervalMin: s.job.intervalMin ?? 10,
         state: s.state,
         dueAt: s.dueAt,
         nextDueAt: s.nextDueAt,

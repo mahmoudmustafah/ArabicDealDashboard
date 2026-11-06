@@ -1,4 +1,4 @@
-import type { CategoryId, SourceId } from './config.ts'
+import type { CategoryId, Channel, SourceId } from './config.ts'
 import { json, type DB } from './db.ts'
 import type { Obs } from './evaluate.ts'
 import type { LastPost } from './policy.ts'
@@ -32,7 +32,7 @@ export type ProductRow = {
 export type DeliveryRow = {
   id: number
   offer_id: number
-  channel: 'priority' | 'general'
+  channel: Channel
   scheduled_at: number
   state: 'scheduled' | 'sending' | 'sent' | 'retrying' | 'failed' | 'cancelled'
   attempts: string
@@ -65,6 +65,8 @@ export type Attempt = { at: number; ok: boolean; error?: string; recheck?: boole
 export function repo(db: DB) {
   const q = {
     findProduct: db.prepare('SELECT * FROM products WHERE source = ? AND store_key = ? AND seller = ?'),
+    // Listings give no seller and product pages do, so the same product must not become two rows.
+    findSameProduct: db.prepare(`SELECT * FROM products WHERE source = ? AND store_key = ? ORDER BY seller = '' DESC, id LIMIT 1`),
     insertProduct: db.prepare(`INSERT INTO products
       (source, store_key, seller, category, name, brand, image, url, variant, pack_value, pack_unit, pack_qty, list_price, available, promo, discovered_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
@@ -81,7 +83,8 @@ export function repo(db: DB) {
         (SELECT MIN(sent_at) FROM deliveries d WHERE d.offer_id = o.id AND d.state = 'sent') AS sent_at,
         (SELECT posted_price FROM deliveries d WHERE d.offer_id = o.id AND d.state = 'sent' ORDER BY d.sent_at DESC LIMIT 1) AS posted_price
       FROM offers o
-      WHERE o.product_id = ? AND o.decision = 'publish' AND o.status IN ('scheduled', 'published')
+      WHERE o.product_id IN (SELECT q.id FROM products q JOIN products p ON q.source = p.source AND q.store_key = p.store_key WHERE p.id = ?)
+        AND o.decision = 'publish' AND o.status IN ('scheduled', 'published')
       ORDER BY o.detected_at DESC LIMIT 1`),
     maxSince: db.prepare('SELECT MAX(price) m FROM observations WHERE product_id = ? AND t > ?'),
     lastSkip: db.prepare(`SELECT * FROM offers WHERE product_id = ? AND decision = 'skip' ORDER BY detected_at DESC LIMIT 1`),
@@ -96,7 +99,7 @@ export function repo(db: DB) {
       const seller = l.seller ?? ''
       const promo = l.promos?.length ? JSON.stringify(l.promos) : null
       const avail = l.available === undefined ? null : l.available ? 1 : 0
-      const existing = q.findProduct.get(l.source, l.storeKey, seller) as ProductRow | undefined
+      const existing = (q.findProduct.get(l.source, l.storeKey, seller) ?? q.findSameProduct.get(l.source, l.storeKey)) as ProductRow | undefined
       if (existing) {
         q.updateProduct.run(l.name, l.brand ?? null, l.image ?? null, l.url, l.variant ?? null, l.listPrice ?? null, avail, promo, existing.id)
         return { id: existing.id, isNew: false }
@@ -154,7 +157,7 @@ export function repo(db: DB) {
       return Number(r.lastInsertRowid)
     },
 
-    insertDelivery(offerId: number, channel: 'priority' | 'general', at: number, price: number) {
+    insertDelivery(offerId: number, channel: Channel, at: number, price: number) {
       q.insertDelivery.run(offerId, channel, at, at, price)
     },
 

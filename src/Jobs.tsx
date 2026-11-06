@@ -4,7 +4,9 @@ import {
   CircleDashed,
   Flame,
   Gauge,
+  Baby,
   Gift,
+  Droplets,
   Headphones,
   HardDrive,
   Keyboard,
@@ -41,6 +43,8 @@ const icons: Record<string, LucideIcon> = {
   'oud-bakhoor': Flame,
   'gift-sets': Gift,
   supermarket: ShoppingBasket,
+  'home-care': Droplets,
+  diapers: Baby,
 }
 
 type RunStatus = ScanRun['status']
@@ -104,7 +108,7 @@ export function Jobs({ info }: { info?: Meta }) {
         </span>
         {L('مباشر · الساعة', 'Live ·')} <b className="num text-ink">{clock(t)}</b>
         <span className="hidden text-mute @xl:inline">
-          · {L(`كل قسم بيتبحث فيه كل 10 دقائق في ${stores.length} متاجر`, `each category is searched every 10 minutes across ${stores.length} stores`)}
+          · {L('نون وإماراتي سنتس كل 10 دقائق، وأمازون كل 30 دقيقة', 'Noon and Emarati Scents every 10 minutes, Amazon every 30')}
         </span>
       </div>
 
@@ -127,11 +131,11 @@ export function Jobs({ info }: { info?: Meta }) {
             <Timer className="size-4" /> {L('دورة الـ 10 دقائق', 'The 10-minute cycle')}
           </h3>
           <span className="text-[12px] text-mute">
-            {L('الخط الأسود = دلوقتي', 'Dark line = now')} (<Mm ms={cyclePos} /> {L('من الدورة', 'into the cycle')})
+            {L('المتاجر اللي بتتفحص كل 10 دقائق · الخط الأسود = دلوقتي', 'Stores scanned every 10 minutes · dark line = now')} (<Mm ms={cyclePos} /> {L('من الدورة', 'into the cycle')})
           </span>
         </div>
         <div className="mt-4 flex flex-col gap-2.5">
-          {states.map((j) => {
+          {states.filter((j) => j.intervalMin === 10).map((j) => {
             const Icon = icons[j.category] ?? SprayCan
             const last = lastRun(j)
             const a = ((j.nextDueAt ?? 0) % CYCLE) / CYCLE
@@ -274,7 +278,7 @@ function JobCard({ j, t, label }: { j: JobView; t: number; label: string }) {
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-[15px] font-bold">{label}</h3>
           <div className="text-[11.5px] text-mute">
-            <span dir="ltr">{store(j.source).label}</span> · {L('كل 10 دقائق', 'every 10 min')}
+            <span dir="ltr">{store(j.source).label}</span> · {L(`كل ${j.intervalMin} دقيقة`, `every ${j.intervalMin} min`)}
           </div>
         </div>
         {j.state === 'running' ? (

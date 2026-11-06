@@ -1,7 +1,7 @@
-import { publication as P } from './config.ts'
+import { publication as P, ownChannel } from './config.ts'
 import type { DB } from './db.ts'
 import { analyze, type Analysis } from './evaluate.ts'
-import { decide, type Decision } from './policy.ts'
+import { decide, isNewOffer, type Decision } from './policy.ts'
 import type { Repo } from './repo.ts'
 
 export const HISTORY_WINDOW_MS = 120 * 86_400_000
@@ -23,7 +23,8 @@ export function evaluateAndSchedule(db: DB, repo: Repo, productId: number, now: 
   const a = analyzeProduct(repo, productId, now)
   if (!a) return {}
   const p = repo.product(productId)!
-  const d = decide(a, { now, available: p.available === null ? null : !!p.available, lastPost: repo.lastPost(productId) })
+  const verdict = decide(a, { now, available: p.available === null ? null : !!p.available, lastPost: repo.lastPost(productId) })
+  const d: Decision = verdict.publish && !isNewOffer(a, p.discovered_at) ? { ...verdict, publish: false, reason: 'Discount already there before posting opened' } : verdict
 
   if (!d.publish) {
     if (a.best && d.reason !== 'Already scheduled for publication' && repo.shouldLogSkip(productId, a.current.price, d.reason)) {
@@ -44,6 +45,7 @@ export function evaluateAndSchedule(db: DB, repo: Repo, productId: number, now: 
     return { analysis: a, decision: d }
   }
 
+  const own = ownChannel(p.category)
   db.exec('BEGIN')
   try {
     const offerId = repo.insertOffer({
@@ -54,12 +56,13 @@ export function evaluateAndSchedule(db: DB, repo: Repo, productId: number, now: 
       basis: d.basis,
       pct: d.pct,
       labels: JSON.stringify(a.labels),
-      priority: d.priority ? 1 : 0,
+      priority: d.priority && !own ? 1 : 0,
       decision: 'publish',
       reason: d.reason,
       status: 'scheduled',
     })
-    if (d.priority) {
+    if (own) repo.insertDelivery(offerId, own, now, a.current.price)
+    else if (d.priority) {
       repo.insertDelivery(offerId, 'priority', now, a.current.price)
       // Brief §15: the delay is measured from discovery, not from the priority send.
       repo.insertDelivery(offerId, 'general', now + P.generalDelayMs, a.current.price)

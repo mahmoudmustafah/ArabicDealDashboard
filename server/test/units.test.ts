@@ -19,6 +19,17 @@ test('pack sizes', () => {
   assert.deepEqual(parsePack('Fine tissues pack of 10'), { qty: 10, unit: 'item' })
 })
 
+test('real grocery and diaper titles', () => {
+  assert.deepEqual(parsePack('76-Piece Diapers Maxi (Size 5) (11-18 KG)'), { qty: 76, unit: 'item' })
+  assert.deepEqual(parsePack('Premium EXTRA CARE Diapers, Size 4, 58 Baby Diapers'), { qty: 58, unit: 'item' })
+  assert.deepEqual(parsePack('Baby Diapers - Mega Pack - Xlarge Size 6 - 64 Pieces'), { qty: 64, unit: 'item' })
+  assert.deepEqual(parsePack('Mega Pack Of 76 Maxi Pants Diapers - Size 4'), { qty: 76, unit: 'item' })
+  assert.deepEqual(parsePack('Manual Laundry Powder Detergent 8+2 KG Free'), { value: 10000, unit: 'g' })
+  assert.deepEqual(parsePack('Automatic Powder Detergent Lavender (8+1Kg) 9kg'), { value: 9000, unit: 'g' })
+  assert.deepEqual(parsePack('Full Cream Multipack 1 L - Pack of 6'), { value: 1000, unit: 'ml', qty: 6 })
+  assert.deepEqual(parsePack('Sunflower Oil 5Liters'), { value: 5000, unit: 'ml' })
+})
+
 test('a smaller pack is not the same product', () => {
   assert.equal(samePack(parsePack('Oil 1.5 L'), parsePack('Oil 750 ml')), false)
   assert.equal(samePack(parsePack('Oil 1.5 L'), parsePack('Oil 1.5 لتر')), true)

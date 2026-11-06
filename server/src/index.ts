@@ -27,7 +27,7 @@ const publisher = createPublisher({
   now,
   // Dry runs send nothing, so they must not load store pages.
   capture: (channel, source, url, price) =>
-    telegram.token && (channel === 'priority' ? telegram.priorityChatId : telegram.generalChatId) ? screenshot(source, url, price) : Promise.resolve(null),
+    telegram.token && telegram.chatId(channel) ? screenshot(source, url, price) : Promise.resolve(null),
 })
 
 if (telegram.dryRun) console.warn('[telegram] TELEGRAM_BOT_TOKEN not set: deliveries are recorded as dry-run, nothing is sent')

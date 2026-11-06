@@ -22,6 +22,12 @@ export type Decision =
 
 const r1 = (n: number) => Math.round(n * 10) / 10
 
+/** New means the price changed after we first saw the product, or the product itself is new. Never a discount that was already there. */
+export function isNewOffer(a: Pick<Analysis, 'detectedAt'>, discoveredAt: number, since = { changedSince: P.changedSince, discoveredSince: P.discoveredSince }) {
+  if (discoveredAt >= since.discoveredSince) return true
+  return a.detectedAt > discoveredAt && a.detectedAt >= since.changedSince
+}
+
 /** The smallest discount a post may show for each basis. */
 export const minPctFor: Record<Basis, number> = {
   observed: P.minObservedDropPct,
@@ -36,6 +42,9 @@ export const minPctFor: Record<Basis, number> = {
  */
 export function shownDeal(a: Analysis): { basis: Basis; pct: number; refPrice: number } | undefined {
   const options: { basis: Basis; pct: number; refPrice: number }[] = []
+  // A small drop of our own reads badly next to a much bigger discount on the store's page.
+  if (a.best && a.best.basis !== 'advertised' && a.best.pct < P.preferAdvertisedBelowPct && a.advertisedPct && a.listPrice && a.advertisedPct > a.best.pct)
+    options.push({ basis: 'advertised', pct: a.advertisedPct, refPrice: a.listPrice })
   if (a.best) options.push(a.best)
   if (a.prevHigher && a.observedDropPct) options.push({ basis: 'observed', pct: a.observedDropPct, refPrice: a.prevHigher.price })
   if (a.belowUsual && a.usual && a.belowUsualPct) options.push({ basis: 'below_usual', pct: a.belowUsualPct, refPrice: a.usual })
@@ -49,8 +58,8 @@ export function routingPct(a: Analysis) {
   return Math.max(...parts)
 }
 
-/** Priority when the discount is 50% or more, or the drop is exceptional. */
-export const isPriority = (a: Analysis) => a.exceptional || routingPct(a) >= P.priorityPct
+/** Priority is decided by the discount alone. An exceptional drop under the line goes straight to the general channel, with its notice. */
+export const isPriority = (a: Analysis) => routingPct(a) >= P.priorityPct
 
 export function decide(a: Analysis, ctx: { now: number; available?: boolean | null; lastPost?: LastPost }): Decision {
   const best = a.best

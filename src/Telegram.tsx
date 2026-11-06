@@ -10,6 +10,7 @@ import {
   RotateCw,
   Search,
   Send,
+  ShoppingBasket,
   Zap,
 } from 'lucide-react'
 import { useState } from 'react'
@@ -25,6 +26,7 @@ const PRIORITY_THRESHOLD = 50
 const channels = {
   priority: () => L('الشات الخاص — أولوية', 'Private chat — priority'),
   general: () => L('القناة العامة', 'General channel'),
+  supermarket: () => L('قناة السوبرماركت', 'Supermarket channel'),
 }
 
 const of = (p: OfferView, ch: Delivery['channel']) => p.deliveries.find((d) => d.channel === ch)
@@ -117,7 +119,7 @@ function DeliveryCell({ d, t, compact }: { d?: Delivery; t: number; compact?: bo
   )
 }
 
-type Filter = 'all' | 'priority' | 'general' | 'waiting' | 'dry' | 'issues'
+type Filter = 'all' | 'priority' | 'general' | 'supermarket' | 'waiting' | 'dry' | 'issues'
 
 export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id: number) => void }) {
   const q0 = useApi(() => api.posts(200), 15_000)
@@ -136,7 +138,8 @@ export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id:
   const list = visible.filter((p) => {
     if (text && !(p.name ?? '').toLowerCase().includes(text)) return false
     if (filter === 'priority') return !!of(p, 'priority')
-    if (filter === 'general') return !of(p, 'priority')
+    if (filter === 'general') return !!of(p, 'general') && !of(p, 'priority')
+    if (filter === 'supermarket') return !!of(p, 'supermarket')
     if (filter === 'waiting') return isWaiting(p)
     if (filter === 'dry') return anyDry(p)
     if (filter === 'issues') return hasIssue(p) || isCancelled(p)
@@ -206,8 +209,8 @@ export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id:
       </section>
 
       {/* channels */}
-      <section className="grid gap-3 @3xl:grid-cols-2">
-        {(['priority', 'general'] as const).map((ch) => {
+      <section className="grid gap-3 @3xl:grid-cols-3">
+        {(['priority', 'general', 'supermarket'] as const).map((ch) => {
           const sent = sentTo(ch)
           const last = sent[0]
           const dry = visible.filter((p) => isDry(of(p, ch))).length
@@ -216,7 +219,7 @@ export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id:
             <div key={ch} className={cx('rounded-2xl border bg-white p-4', ch === 'priority' ? 'border-pending-line' : 'border-line')}>
               <div className="flex items-center gap-3">
                 <div className={cx('grid size-10 place-items-center rounded-xl', ch === 'priority' ? 'bg-pending-soft text-pending' : 'bg-canvas text-ink')}>
-                  {ch === 'priority' ? <Zap className="size-5" /> : <Megaphone className="size-5" />}
+                  {ch === 'priority' ? <Zap className="size-5" /> : ch === 'supermarket' ? <ShoppingBasket className="size-5" /> : <Megaphone className="size-5" />}
                 </div>
                 <div className="min-w-0 flex-1 truncate text-[15px] font-bold">{channels[ch]()}</div>
                 {connected ? (
@@ -251,7 +254,8 @@ export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id:
             [
               ['all', L('كل العروض', 'All offers'), visible.length],
               ['priority', L('أولوية', 'Priority'), visible.filter((p) => of(p, 'priority')).length],
-              ['general', L('العامة بس', 'General only'), visible.filter((p) => !of(p, 'priority')).length],
+              ['general', L('العامة بس', 'General only'), visible.filter((p) => of(p, 'general') && !of(p, 'priority')).length],
+              ['supermarket', L('السوبرماركت', 'Supermarket'), visible.filter((p) => of(p, 'supermarket')).length],
               ['waiting', L('مستنية', 'Waiting'), waiting.length],
               ['dry', L('تجربة', 'Dry run'), visible.filter(anyDry).length],
               ['issues', L('فشل أو اتلغى', 'Failed or cancelled'), visible.filter((p) => hasIssue(p) || isCancelled(p)).length],
@@ -290,7 +294,7 @@ export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id:
 
       {/* log */}
       <section className="overflow-hidden rounded-2xl border border-line bg-white">
-        <div className="hidden grid-cols-[minmax(0,2.2fr)_1fr_1.1fr_1.1fr_28px] gap-3 border-b border-line bg-canvas/70 px-4 py-2.5 text-[12px] font-semibold text-body @4xl:grid">
+        <div className="hidden grid-cols-[minmax(0,2.2fr)_1fr_1.1fr_1.1fr_1.1fr_28px] gap-3 border-b border-line bg-canvas/70 px-4 py-2.5 text-[12px] font-semibold text-body @4xl:grid">
           <span>{L('العرض', 'Offer')}</span>
           <span>{L('سبب التوجيه', 'Routing reason')}</span>
           <span className="flex items-center gap-1">
@@ -298,6 +302,9 @@ export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id:
           </span>
           <span className="flex items-center gap-1">
             <Megaphone className="size-3.5" /> {L('القناة العامة', 'General channel')}
+          </span>
+          <span className="flex items-center gap-1">
+            <ShoppingBasket className="size-3.5" /> {L('السوبرماركت', 'Supermarket')}
           </span>
           <span />
         </div>
@@ -308,7 +315,7 @@ export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id:
               <button
                 onClick={() => setOpenId(open ? null : p.id)}
                 aria-expanded={open}
-                className="grid w-full grid-cols-[1fr_auto] gap-3 px-4 py-3 text-start hover:bg-canvas/40 @4xl:grid-cols-[minmax(0,2.2fr)_1fr_1.1fr_1.1fr_28px] @4xl:items-center"
+                className="grid w-full grid-cols-[1fr_auto] gap-3 px-4 py-3 text-start hover:bg-canvas/40 @4xl:grid-cols-[minmax(0,2.2fr)_1fr_1.1fr_1.1fr_1.1fr_28px] @4xl:items-center"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <Thumb src={p.image} alt={p.name ?? ''} className="size-11 shrink-0 rounded-lg" />
@@ -323,7 +330,7 @@ export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id:
                 <div className="col-span-2 @4xl:col-span-1">
                   <Reason p={p} />
                 </div>
-                <div className="col-span-2 grid grid-cols-2 gap-2 @4xl:contents">
+                <div className="col-span-2 grid grid-cols-3 gap-2 @4xl:contents">
                   <div>
                     <div className="mb-1 text-[11px] text-mute @4xl:hidden">{L('الأولوية', 'Priority')}</div>
                     <DeliveryCell d={of(p, 'priority')} t={t} compact />
@@ -331,6 +338,10 @@ export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id:
                   <div>
                     <div className="mb-1 text-[11px] text-mute @4xl:hidden">{L('القناة العامة', 'General channel')}</div>
                     <DeliveryCell d={of(p, 'general')} t={t} compact />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-[11px] text-mute @4xl:hidden">{L('السوبرماركت', 'Supermarket')}</div>
+                    <DeliveryCell d={of(p, 'supermarket')} t={t} compact />
                   </div>
                 </div>
               </button>

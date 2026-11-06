@@ -61,16 +61,20 @@ All three were checked against the live stores on 2026-11-06 with `pnpm scan-onc
 
 ## 5. Publication (DEFAULT unless marked)
 
+**Separate channels:** supermarket, home care and baby diapers post only to the supermarket channel, never to priority or general. Until `TELEGRAM_SUPERMARKET_CHAT_ID` is set they stay dry-run. `categoryChannel` in `config.ts` maps a category to its channel.
+
+**Scan intervals:** Amazon category jobs run every 30 minutes, because Amazon blocks heavier scanning. Noon and Emarati Scents run every 10. Each job sets its own `intervalMin`.
+
 An offer is published to **General** if it's fresh (read in the last 20 minutes), not marked unavailable, and at least one of these is true:
 
-- an observed drop of 15% or more
-- 10% or more below usual
-- an advertised discount of 40% or more (the message says it's the store's claim)
+- an observed drop of 5% or more
+- 5% or more below usual
+- an advertised discount of 5% or more (the message says it's the store's claim)
 - an exceptional drop
 
 There's also a cap of **30 General posts per hour**. Extra offers wait, strongest first.
 
-**Priority** applies when the discount is **50% or more** or the drop is exceptional. This is Mayar's decision from 2026-11-05: the brief said strictly more than 50%. Priority posts go to a private chat with the bot, and General posts go to the public channel @orodmano.
+**Priority** applies when the discount is **40% or more**, on any basis. This is Mayar's decision from 2026-11-06. Those offers go to the private channel first, then to the general channel 5 minutes later after a price recheck. Everything else that qualifies goes straight to the general channel, including an exceptional drop under 40%, which keeps its "still verifying" notice. A post that waits behind the hourly cap is rechecked before it goes out.
 
 The brief lets advertised discounts count toward priority, so `priorityAllowsAdvertised: true`. **Recommendation:** set this to `false`, so a 55% advertised claim we never verified doesn't go to the premium channel.
 

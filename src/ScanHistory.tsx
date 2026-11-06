@@ -58,7 +58,7 @@ export function ScanHistory({ info, open }: Props) {
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Kpi label={L('آخر فحص ناجح', 'Last successful scan')} value={ok ? time(ok.started_at) : '—'} sub={ok ? `${date(ok.started_at)} · ${ago(ok.started_at)}` : L('لسه مفيش', 'None yet')} />
-          <Kpi label={L(`نسبة النجاح (آخر ${done.length} فحص)`, `Success rate (last ${done.length} scans)`)} value={`${rate}%`} sub={L('كل قسم بيتفحص كل 10 دقائق', 'Each category is scanned every 10 minutes')} />
+          <Kpi label={L(`نسبة النجاح (آخر ${done.length} فحص)`, `Success rate (last ${done.length} scans)`)} value={`${rate}%`} sub={L('نون وإماراتي كل 10 دقائق، وأمازون كل 30', 'Noon and Emarati every 10 minutes, Amazon every 30')} />
           <Kpi label={L('منتجات متتبَّعة', 'Tracked products')} value={info ? info.tracked.toLocaleString('en-US') : '—'} sub={L('أمازون ونون وإماراتي سنتس', 'Amazon, Noon and Emarati Scents')} />
         </div>
       </section>

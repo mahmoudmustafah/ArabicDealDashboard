@@ -1,10 +1,11 @@
-import { evidence as E, publication as P } from './config.ts'
+import { evidence as E, ownChannel, publication as P, type Channel } from './config.ts'
 import { json, type DB } from './db.ts'
 import { analyze, type Basis } from './evaluate.ts'
 import { HISTORY_WINDOW_MS } from './pipeline.ts'
 import { decide, minPctFor } from './policy.ts'
 import type { Attempt, DeliveryRow, OfferRow, ProductRow, Repo } from './repo.ts'
 import type { SourceAdapter } from './sources/types.ts'
+import { parsePack } from './units.ts'
 import { renderMessage, type Sender } from './telegram.ts'
 import type { SourceId } from './config.ts'
 import { FetchError } from './sources/types.ts'
@@ -21,7 +22,7 @@ export type PublisherDeps = {
   send: Sender
   now: () => number
   /** Screenshot of the offer on the store page. Null or a failure falls back to the product image. */
-  capture?: (channel: 'priority' | 'general', source: SourceId, url: string, price: number) => Promise<Buffer | null>
+  capture?: (channel: Channel, source: SourceId, url: string, price: number) => Promise<Buffer | null>
 }
 
 type Due = DeliveryRow & { offer_priority: number; offer_pct: number }
@@ -31,7 +32,7 @@ export function createPublisher(deps: PublisherDeps) {
   const dueQ = db.prepare(`SELECT d.*, o.priority AS offer_priority, o.pct AS offer_pct FROM deliveries d JOIN offers o ON o.id = d.offer_id
     WHERE (d.state = 'scheduled' AND d.scheduled_at <= ?) OR (d.state = 'retrying' AND d.next_attempt_at <= ?)
     ORDER BY d.channel = 'priority' DESC, o.pct DESC, d.scheduled_at`)
-  const sentLastHour = db.prepare(`SELECT COUNT(*) n FROM deliveries WHERE channel = 'general' AND state = 'sent' AND sent_at > ?`)
+  const sentLastHour = db.prepare(`SELECT COUNT(*) n FROM deliveries WHERE channel = ? AND state = 'sent' AND dry_run = 0 AND sent_at > ?`)
   const offerQ = db.prepare('SELECT * FROM offers WHERE id = ?')
   const setState = db.prepare(
     'UPDATE deliveries SET state = ?, attempts = ?, next_attempt_at = ?, sent_at = ?, message_id = ?, dry_run = ?, cancel_reason = ?, posted_price = ? WHERE id = ?',
@@ -88,12 +89,25 @@ export function createPublisher(deps: PublisherDeps) {
     const attempts = () => json<Attempt[]>(d.attempts, [])
     let price = d.posted_price ?? offer.price
 
-    if (d.channel === 'general' && d.state === 'scheduled') {
-      const n = (sentLastHour.get(now - 3_600_000) as { n: number }).n
+    // A category with its own channel never posts anywhere else, even if it was queued before the rule.
+    const own = ownChannel(p.category)
+    if (own && d.channel !== own && d.state === 'scheduled') {
+      d.state = 'cancelled'
+      d.cancel_reason = `This category posts only to the ${own} channel`
+      d.next_attempt_at = null
+      save(d)
+      return
+    }
+
+    if (d.channel !== 'priority' && d.state === 'scheduled') {
+      const n = (sentLastHour.get(d.channel, now - 3_600_000) as { n: number }).n
       if (n >= P.generalMaxPerHour) return // stays scheduled; strongest offers go first when a slot frees
     }
 
-    const delayed = d.channel === 'general' && offer.priority === 1
+    // Recheck after the priority delay, and for any post that waited in the queue behind the hourly cap,
+    // because a queued price can be hours old by the time its turn comes.
+    const waited = now - offer.detected_at > P.maxAgeAtPublishMs
+    const delayed = d.channel !== 'priority' && (offer.priority === 1 || waited)
     if (delayed && !attempts().some((a) => a.recheck && a.ok)) {
       const r = await recheck(d, offer, p, now)
       if (r.retry) {
@@ -144,7 +158,7 @@ export function createPublisher(deps: PublisherDeps) {
       checkedAt: p.last_seen_at ?? a.current.t,
       url: p.url,
       image: p.image ?? undefined,
-      pack: p.pack_unit ? { value: p.pack_value ?? undefined, unit: p.pack_unit as 'g', qty: p.pack_qty ?? undefined } : undefined,
+      pack: parsePack(`${p.name} ${p.variant ?? ''}`),
     })
     const shot = await deps.capture?.(d.channel, p.source, p.url, price).catch(() => null)
     const res = await deps.send(d.channel, msg.html, shot ?? p.image ?? undefined, msg.button)
