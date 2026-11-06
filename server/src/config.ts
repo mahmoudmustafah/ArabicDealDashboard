@@ -88,6 +88,10 @@ export const jobs: JobDef[] = [
   { id: 'amazon-keyboards', source: 'amazon', category: 'keyboards', target: '/s?k=keyboard+mouse&i=computers', maxPages: 3, offsetSec: 600, intervalMin: AMAZON_MIN },
   { id: 'amazon-storage', source: 'amazon', category: 'storage', target: '/s?k=ssd&i=computers', maxPages: 3, offsetSec: 900, intervalMin: AMAZON_MIN },
   { id: 'amazon-supermarket', source: 'amazon', category: 'supermarket', target: '/s?k=grocery&i=grocery', maxPages: 5, offsetSec: 1200, intervalMin: AMAZON_MIN },
+  // Amazon's own 11.11 deals filter, one job per department so grocery deals stay on the supermarket channel.
+  { id: 'amazon-deals-electronics', source: 'amazon', category: 'electronics', target: '/s?i=electronics&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 2, offsetSec: 45 },
+  { id: 'amazon-deals-beauty', source: 'amazon', category: 'cosmetics', target: '/s?i=beauty&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 2, offsetSec: 240 },
+  { id: 'amazon-deals-grocery', source: 'amazon', category: 'supermarket', target: '/s?i=grocery&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 2, offsetSec: 435 },
   { id: 'amazon-home-care', source: 'amazon', category: 'home-care', target: '/s?k=detergent&i=grocery', maxPages: 3, offsetSec: 1350, intervalMin: AMAZON_MIN },
   { id: 'amazon-diapers', source: 'amazon', category: 'diapers', target: '/s?k=diapers&i=baby', maxPages: 3, offsetSec: 1500, intervalMin: AMAZON_MIN },
   { id: 'noon-mobiles', source: 'noon', category: 'mobiles', target: 'electronics-and-mobiles/mobiles-and-accessories/mobiles-20905', maxPages: 5, offsetSec: 60 },
