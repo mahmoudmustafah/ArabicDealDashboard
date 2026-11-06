@@ -10,8 +10,8 @@ const base: PostContent = {
 
 test('channel style: price line, saving, evidence, store, hashtags, button', () => {
   const { html, button } = renderMessage(base)
-  assert.match(html, /💰 <b>4,999 جنيه<\/b> بدل <s>7,899<\/s> · خصم 37%/)
-  assert.match(html, /💸 هتوفّر 2,900 جنيه/)
+  assert.match(html, /💰 <b>4,999 جنيه<\/b> بدل <s><b>7,899<\/b><\/s> · خصم <b>37%<\/b>/)
+  assert.match(html, /💸 هتوفّر <b>2,900 جنيه<\/b>/)
   assert.match(html, /✅ .*مش السعر المشطوب/)
   assert.match(html, /🏪 نون مصر/)
   assert.match(html, /#سماعات_وإلكترونيات #نون_مصر/)

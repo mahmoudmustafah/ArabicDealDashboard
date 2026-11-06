@@ -91,7 +91,7 @@ test('priority flow: >50% drop → priority now, general 5 min after discovery, 
   await w.publisher.tick()
   assert.deepEqual(w.deliveries().map((d) => [d.channel, d.state]), [['priority', 'sent'], ['general', 'scheduled']])
   assert.match(w.sent[0].html, /لسه بنتأكد منه/)
-  assert.match(w.sent[0].html, /<b>4,000 جنيه<\/b> بدل <s>10,000<\/s> · خصم 60%/)
+  assert.match(w.sent[0].html, /<b>4,000 جنيه<\/b> بدل <s><b>10,000<\/b><\/s> · خصم <b>60%<\/b>/)
 
   w.advance(4 * MIN)
   await w.publisher.tick()

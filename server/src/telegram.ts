@@ -112,19 +112,18 @@ export function renderMessage(c: PostContent): Rendered {
     `<b>${esc(name)}</b>`,
     '',
     c.refPrice
-      ? `💰 <b>${num(c.price)} جنيه</b> بدل <s>${num(c.refPrice)}</s> · خصم ${pct}%`
-      : `💰 <b>${num(c.price)} جنيه</b> · خصم ${pct}%`,
+      ? `💰 <b>${num(c.price)} جنيه</b> بدل <s><b>${num(c.refPrice)}</b></s> · خصم <b>${pct}%</b>`
+      : `💰 <b>${num(c.price)} جنيه</b> · خصم <b>${pct}%</b>`,
   ]
-  if (save > 0) lines.push(`💸 هتوفّر ${num(save)} جنيه`)
+  if (save > 0) lines.push('', `💸 هتوفّر <b>${num(save)} جنيه</b>`)
   const unit = c.pack ? unitPrice(c.price, c.pack) : undefined
-  if (unit) lines.push(`⚖️ ${num(unit.value)} جنيه / ${{ kg: 'كيلو', L: 'لتر', item: 'قطعة' }[unit.per]}`)
-  lines.push(evidenceLine(c))
-  if (c.exceptional) lines.push('⚠️ نزول كبير، لسه بنتأكد منه')
-  for (const p of c.promos.slice(0, 3)) lines.push(promoLine(p))
-  lines.push(`🏪 ${esc(store)}`)
-  lines.push(`🕒 اتأكدنا من السعر ${cairoTime(c.checkedAt)}`)
-  lines.push('')
-  lines.push([c.category ? tag(categoryById(c.category)?.ar ?? c.category) : '', tag(store)].filter(Boolean).join(' '))
+  if (unit) lines.push('', `⚖️ <b>${num(unit.value)} جنيه</b> / ${{ kg: 'كيلو', L: 'لتر', item: 'قطعة' }[unit.per]}`)
+  lines.push('', evidenceLine(c))
+  if (c.exceptional) lines.push('', '⚠️ نزول كبير، لسه بنتأكد منه')
+  const promos = c.promos.slice(0, 3)
+  if (promos.length) lines.push('', ...promos.map(promoLine))
+  lines.push('', `🏪 ${esc(store)}`, `🕒 اتأكدنا من السعر ${cairoTime(c.checkedAt)}`)
+  lines.push('', [c.category ? tag(categoryById(c.category)?.ar ?? c.category) : '', tag(store)].filter(Boolean).join(' '))
 
   return { html: lines.join('\n'), button: { text: `🛒 شوف العرض على ${store}`, url: c.url } }
 }
