@@ -103,7 +103,9 @@ export function renderMessage(c: PostContent): Rendered {
   const pct = Math.round(c.pct)
   const save = c.refPrice ? c.refPrice - c.price : 0
   const verified = c.basis !== 'advertised' && !!c.sufficient
-  const hook = pick(HOOKS[verified ? 'verified' : 'neutral'], c.key)(pct, save)
+  // Never headline a saving we can't show (e.g. "وفّر 0 جنيه").
+  const hooks = HOOKS[verified ? 'verified' : 'neutral'].filter((h) => save > 0 || !h(pct, 0).includes('وفّر'))
+  const hook = pick(hooks, c.key)(pct, save)
   const name = c.name.length > 90 ? c.name.slice(0, 88).trimEnd() + '…' : c.name
 
   const lines = [

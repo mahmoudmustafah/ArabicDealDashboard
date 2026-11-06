@@ -46,3 +46,7 @@ test('"real" wording only with enough history; captions stay under Telegram limi
   assert.ok(long.html.length < 1024)
   assert.doesNotMatch(long.html, /<b>y/, 'store text is escaped')
 })
+
+test('no "save 0" headline when there is no reference price', () => {
+  for (let key = 0; key < 50; key++) assert.doesNotMatch(renderMessage({ ...base, key, refPrice: undefined }).html, /وفّر 0/)
+})
