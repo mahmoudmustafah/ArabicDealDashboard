@@ -272,3 +272,19 @@ test('a blocked or failed screenshot falls back to the product image and still p
     assert.equal(w.deliveries()[0].state, 'sent')
   }
 })
+
+test('a delayed post is cancelled if the price moved and the shown discount fell under the minimum', async () => {
+  const w = world()
+  w.prices.set('A', 1000)
+  await history(w, 3)
+  w.prices.set('A', 500) // qualifies as a big observed drop
+  await w.scan()
+  await w.publisher.tick()
+  w.db.prepare("UPDATE offers SET ref_price = 510, basis = 'observed'").run() // shown discount is now about 2%
+  w.advance(6 * MIN)
+  await w.publisher.tick()
+  const general = w.deliveries().find((d) => d.channel === 'general')!
+  assert.equal(general.state, 'cancelled')
+  assert.match(general.cancel_reason!, /under the 15% minimum/)
+  assert.equal(w.sent.filter((s) => s.channel === 'general').length, 0)
+})

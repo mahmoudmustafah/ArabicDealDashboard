@@ -72,6 +72,17 @@ export function unitPrice(price: number, pack: Pack): { value: number; per: 'kg'
   return undefined
 }
 
+const SMALL_PACK = 100 // g or ml
+const ABSURD_PER_KG_OR_L = 5000 // EGP
+
+/** The unit price worth showing in a post. "31,250 EGP per litre" for a 4 ml serum helps nobody. */
+export function postUnitPrice(price: number, pack: Pack) {
+  const unit = unitPrice(price, pack)
+  if (!unit || unit.per === 'item') return unit
+  if ((pack.value ?? 0) * (pack.qty ?? 1) < SMALL_PACK || unit.value > ABSURD_PER_KG_OR_L) return undefined
+  return unit
+}
+
 const PROMO_RULES: [RegExp, Promo['kind']][] = [
   [/buy\s*1\s*get\s*1|buy one get one|bogo|1\s*\+\s*1|اشتر[يى]\s*1\s*واحصل|واحد\s*\+\s*واحد/i, 'bogo'],
   [/buy\s*\d+\s*(?:for|save)|any\s*\d+\s*for|اشتر[يى]\s*\d+\s*(?:ب|ووفر)/i, 'multibuy'],

@@ -22,6 +22,27 @@ export type Decision =
 
 const r1 = (n: number) => Math.round(n * 10) / 10
 
+/** The smallest discount a post may show for each basis. */
+export const minPctFor: Record<Basis, number> = {
+  observed: P.minObservedDropPct,
+  below_usual: P.minBelowUsualPct,
+  advertised: P.minAdvertisedPct,
+}
+
+/**
+ * What the post shows: the strongest basis, unless its discount is under that basis's minimum.
+ * An offer can qualify on the store's advertised discount while our own observed drop is tiny,
+ * and then the post must show the discount it qualified on, not "5% off".
+ */
+export function shownDeal(a: Analysis): { basis: Basis; pct: number; refPrice: number } | undefined {
+  const options: { basis: Basis; pct: number; refPrice: number }[] = []
+  if (a.best) options.push(a.best)
+  if (a.prevHigher && a.observedDropPct) options.push({ basis: 'observed', pct: a.observedDropPct, refPrice: a.prevHigher.price })
+  if (a.belowUsual && a.usual && a.belowUsualPct) options.push({ basis: 'below_usual', pct: a.belowUsualPct, refPrice: a.usual })
+  if (a.advertisedPct && a.listPrice) options.push({ basis: 'advertised', pct: a.advertisedPct, refPrice: a.listPrice })
+  return options.find((o) => o.pct >= minPctFor[o.basis])
+}
+
 export function routingPct(a: Analysis) {
   const parts = [a.observedDropPct ?? 0, a.belowUsual ? (a.belowUsualPct ?? 0) : 0]
   if (P.priorityAllowsAdvertised) parts.push(a.advertisedPct ?? 0)
@@ -66,5 +87,7 @@ export function decide(a: Analysis, ctx: { now: number; available?: boolean | nu
       }
   }
 
-  return { publish: true, priority, ...base, reason: why.join('; ') }
+  const shown = shownDeal(a)
+  if (!shown) return { ...base, publish: false, priority, reason: `Below publication minimums (best: ${best.basis} ${r1(best.pct)}%)` }
+  return { publish: true, priority, ...shown, reason: why.join('; ') }
 }

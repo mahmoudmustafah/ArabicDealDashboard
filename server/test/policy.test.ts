@@ -53,3 +53,19 @@ test('a returning offer waits for the cooldown', () => {
   assert.equal(decide(a, { now: NOW, lastPost: { ...lp, at: NOW - 3 * H } }).publish, false)
   assert.equal(decide(a, { now: NOW, lastPost: { ...lp, at: NOW - 25 * H } }).publish, true)
 })
+
+test('a tiny observed drop with a big advertised discount shows the advertised discount', () => {
+  // The furniture cleaner: 80.29 → 75.99 (5%), and the store crosses out 197 (61%).
+  const a = analyze([...flat(5, 80.29), { t: NOW, price: 75.99 }], 197)
+  const d = decide(a, { now: NOW })
+  assert.equal(d.publish, true)
+  assert.equal(d.basis, 'advertised')
+  assert.equal(d.refPrice, 197)
+  assert.equal(Math.round(d.pct!), 61)
+})
+
+test('a strong observed drop still shows as observed, even with an advertised discount', () => {
+  const d = decide(analyze([...flat(5, 1000), { t: NOW, price: 800 }], 2000), { now: NOW })
+  assert.equal(d.publish && d.basis, 'observed')
+  assert.equal(d.publish && d.refPrice, 1000)
+})

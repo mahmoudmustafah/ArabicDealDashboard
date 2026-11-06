@@ -55,3 +55,8 @@ test('promo text that is really CSS never reaches a post', () => {
   const { html } = renderMessage({ key: 1, name: 'Remote', source: 'amazon', price: 450, refPrice: 1350, basis: 'advertised', pct: 67, promos: [{ kind: 'coupon', text: '.newCouponBadge { color: black; }' }], exceptional: false, checkedAt: 0, url: 'https://www.amazon.eg/dp/A' })
   assert.doesNotMatch(html, /newCouponBadge/)
 })
+
+test('the post for a small pack has no per-litre price', () => {
+  const { html } = renderMessage({ key: 1, name: 'Serum 4ml', source: 'noon', price: 125, refPrice: 250, basis: 'advertised', pct: 50, promos: [], exceptional: false, checkedAt: 0, url: 'https://www.noon.com/x', pack: { value: 4, unit: 'ml' } })
+  assert.doesNotMatch(html, /⚖️/)
+})

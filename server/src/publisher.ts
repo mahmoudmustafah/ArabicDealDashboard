@@ -1,8 +1,8 @@
 import { evidence as E, publication as P } from './config.ts'
 import { json, type DB } from './db.ts'
-import { analyze } from './evaluate.ts'
+import { analyze, type Basis } from './evaluate.ts'
 import { HISTORY_WINDOW_MS } from './pipeline.ts'
-import { decide } from './policy.ts'
+import { decide, minPctFor } from './policy.ts'
 import type { Attempt, DeliveryRow, OfferRow, ProductRow, Repo } from './repo.ts'
 import type { SourceAdapter } from './sources/types.ts'
 import { renderMessage, type Sender } from './telegram.ts'
@@ -115,6 +115,16 @@ export function createPublisher(deps: PublisherDeps) {
       d.attempts = JSON.stringify([...attempts(), { at: now, ok: true, recheck: true }])
     }
 
+    // The price may have moved since the decision. Never post a discount under the minimum for its basis.
+    const shownPct = offer.ref_price ? ((offer.ref_price - price) / offer.ref_price) * 100 : offer.pct
+    if (shownPct < minPctFor[offer.basis as Basis]) {
+      d.state = 'cancelled'
+      d.cancel_reason = `Discount is now ${Math.round(shownPct)}%, under the ${minPctFor[offer.basis as Basis]}% minimum`
+      d.next_attempt_at = null
+      save(d)
+      return
+    }
+
     d.state = 'sending'
     save(d)
     const a = analyze(repo.history(p.id, now - HISTORY_WINDOW_MS), p.list_price ?? undefined)
@@ -128,7 +138,7 @@ export function createPublisher(deps: PublisherDeps) {
       price,
       refPrice: offer.ref_price ?? undefined,
       basis: offer.basis as 'observed',
-      pct: offer.ref_price ? ((offer.ref_price - price) / offer.ref_price) * 100 : offer.pct,
+      pct: shownPct,
       promos: repo.promos(p),
       exceptional: offer.labels.includes('exceptional') && !offer.verified_at,
       checkedAt: p.last_seen_at ?? a.current.t,

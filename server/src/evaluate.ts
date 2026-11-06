@@ -32,6 +32,8 @@ export type Analysis = {
   exceptional: boolean
   advertisedPct?: number
   labels: DealLabel[]
+  /** The store's crossed-out price, when it is above the current price. */
+  listPrice?: number
   /** Strongest evidence we can state truthfully, with its percentage. */
   best?: { basis: Basis; pct: number; refPrice: number }
 }
@@ -152,6 +154,7 @@ export function analyze(history: Obs[], listPrice?: number): Analysis {
     exceptional,
     advertisedPct,
     labels,
+    listPrice: advertisedPct ? listPrice : undefined,
     best,
   }
 }
