@@ -90,8 +90,8 @@ test('priority flow: >50% drop → priority now, general 5 min after discovery, 
   assert.equal(r.scheduled, 1)
   await w.publisher.tick()
   assert.deepEqual(w.deliveries().map((d) => [d.channel, d.state]), [['priority', 'sent'], ['general', 'scheduled']])
-  assert.match(w.sent[0].html, /نزول استثنائي — قيد التحقق/)
-  assert.match(w.sent[0].html, /نزول مرصود <b>60%<\/b>/)
+  assert.match(w.sent[0].html, /لسه بنتأكد منه/)
+  assert.match(w.sent[0].html, /<b>4,000 جنيه<\/b> بدل <s>10,000<\/s> · خصم 60%/)
 
   w.advance(4 * MIN)
   await w.publisher.tick()
@@ -118,7 +118,7 @@ test('general recheck: still a deal → published; repeated scans do not repost'
   assert.deepEqual(w.deliveries().map((d) => d.state), ['sent', 'sent'])
   const verified = w.db.prepare('SELECT verified_at FROM offers WHERE decision = ?').get('publish') as { verified_at: number | null }
   assert.ok(verified.verified_at, 'exceptional confirmed by the recheck')
-  assert.doesNotMatch(w.sent[1].html, /قيد التحقق/, 'verified offers drop the verifying notice')
+  assert.doesNotMatch(w.sent[1].html, /لسه بنتأكد منه/, 'verified offers drop the verifying notice')
 
   await history(w, 3) // same price found again and again
   await w.publisher.tick()

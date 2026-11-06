@@ -110,8 +110,12 @@ export function createPublisher(deps: PublisherDeps) {
     d.state = 'sending'
     save(d)
     const a = analyze(repo.history(p.id, now - HISTORY_WINDOW_MS), p.list_price ?? undefined)
-    const html = renderMessage({
+    const msg = renderMessage({
+      key: p.id,
       name: p.name,
+      category: p.category,
+      sufficient: a.sufficient,
+      lowestSeen: a.lowest.price >= a.current.price,
       source: p.source,
       price,
       refPrice: offer.ref_price ?? undefined,
@@ -124,7 +128,7 @@ export function createPublisher(deps: PublisherDeps) {
       image: p.image ?? undefined,
       pack: p.pack_unit ? { value: p.pack_value ?? undefined, unit: p.pack_unit as 'g', qty: p.pack_qty ?? undefined } : undefined,
     })
-    const res = await deps.send(d.channel, html, p.image ?? undefined)
+    const res = await deps.send(d.channel, msg.html, p.image ?? undefined, msg.button)
     const t = deps.now()
     const sendAttempts = attempts().filter((x) => !x.recheck)
     if (res.ok) {

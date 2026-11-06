@@ -1,4 +1,4 @@
-import { sourceById, telegram as T, timezone } from './config.ts'
+import { categoryById, sourceById, telegram as T, timezone } from './config.ts'
 import type { Basis } from './evaluate.ts'
 import type { Promo } from './sources/types.ts'
 import { unitPrice, type Pack } from './units.ts'
@@ -9,67 +9,132 @@ import { unitPrice, type Pack } from './units.ts'
  */
 
 export type PostContent = {
+  /** Stable key (product id) so the same deal always gets the same headline. */
+  key: number | string
   name: string
   source: string
+  category?: string
   price: number
   refPrice?: number
   basis: Basis
   pct: number
   promos: Promo[]
   exceptional: boolean
+  /** Enough history for a usual-price comparison. */
+  sufficient?: boolean
+  /** Current price is the lowest we have ever seen. */
+  lowestSeen?: boolean
   checkedAt: number
   url: string
   image?: string
   pack?: Pack
 }
 
-const egp = (n: number) => `${Math.round(n).toLocaleString('en-US')} ج.م`
+export type Rendered = { html: string; button: { text: string; url: string } }
+
+const num = (n: number) => Math.round(n).toLocaleString('en-US')
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+const tag = (s: string) => '#' + s.trim().replace(/[\s&،,/]+/g, '_').replace(/_+/g, '_')
 const cairoTime = (t: number) =>
-  new Intl.DateTimeFormat('ar-EG', { timeZone: timezone, hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }).format(t)
+  new Intl.DateTimeFormat('ar-EG', { timeZone: timezone, hour: 'numeric', minute: '2-digit' }).format(t)
 
-const basisLine: Record<Basis, (pct: number, ref?: number) => string> = {
-  observed: (p, ref) => `📉 نزول مرصود <b>${Math.round(p)}%</b>${ref ? ` — رصدناه قبل كده بـ ${egp(ref)}` : ''}`,
-  below_usual: (p, ref) => `📊 أقل من المعتاد بـ <b>${Math.round(p)}%</b>${ref ? ` — السعر المعتاد ${egp(ref)}` : ''}`,
-  advertised: (p, ref) => `🏷️ خصم معلن من المتجر <b>${Math.round(p)}%</b>${ref ? ` (السعر المشطوب ${egp(ref)})` : ''} — مش متأكدين منه من سجل الأسعار`,
+/**
+ * Headlines in the channel's voice. Only deals backed by our own price history
+ * may say "real" ("بجد", "حقيقي"). A store-advertised discount never does.
+ */
+const HOOKS: Record<'verified' | 'advertised', ((p: number, save: number) => string)[]> = {
+  verified: [
+    (p) => `💥 نزل ${p}% بجد مش كلام!`,
+    () => '👌 خصم حقيقي مش وهمي',
+    () => '🔥 عرض جامد!',
+    () => '⚡ فرصة حلوة أوي!',
+    (_, s) => `🤑 وفّر ${num(s)} جنيه!`,
+    () => '💡 فرصة حلوة لو بتدور عليه',
+    () => '✨ لقطة لو محتاجه',
+    () => '🛍 سعر حلو النهاردة',
+  ],
+  advertised: [
+    (p) => `🆕 نزل جديد وعليه خصم ${p}%!`,
+    () => '🆕 لسه نازل بخصم كبير',
+    () => '✨ لقطة لو محتاجه',
+    () => '💡 فرصة حلوة لو بتدور عليه',
+    () => '🛍 سعر حلو النهاردة',
+    (_, s) => `🤑 وفّر ${num(s)} جنيه!`,
+  ],
 }
 
-const promoAr: Record<Promo['kind'], string> = {
-  coupon: 'محتاج كوبون',
-  member: 'سعر للأعضاء فقط',
-  bogo: 'اشتري واحد وخد واحد',
-  multibuy: 'عرض على كمية',
-  min_order: 'حد أدنى للطلب',
-  other: 'شرط',
+function pick<T>(list: T[], key: number | string): T {
+  let h = 2166136261
+  for (const ch of String(key)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619)
+  return list[(h >>> 0) % list.length]
 }
 
-export function renderMessage(c: PostContent): string {
+function evidenceLine(c: PostContent) {
+  if (c.basis === 'advertised') return 'ℹ️ الخصم حسب الموقع، ولسه بنتابع سعره بنفسنا'
+  if (c.basis === 'below_usual') return '✅ قارناه بسعره المعتاد، مش باللي الموقع كاتبه'
+  if (!c.sufficient && c.lowestSeen) return 'ℹ️ لسه بنتابعه من قريب، بس ده أقل من كل اللي شفناه'
+  return pick(['✅ حسبناها من تاريخ سعره عندنا، مش السعر المشطوب', '✅ مقارنة بسعره الحقيقي من متابعتنا، مش السعر المشطوب'], c.key)
+}
+
+const BANK = /bank|card|بنك|كارت|بطاق/i
+
+function promoLine(p: Promo) {
+  const t = esc(p.text)
+  if (BANK.test(p.text)) return `🏦 كود بنكي: ${t} (بكارت البنك فقط)`
+  switch (p.kind) {
+    case 'coupon': return `🎟 كوبون: ${t}`
+    case 'member': return `👤 سعر للأعضاء: ${t}`
+    case 'bogo': return `🎁 ${t}`
+    case 'multibuy': return `🛒 عرض كمية: ${t}`
+    case 'min_order': return `📦 حد أدنى للطلب: ${t}`
+    default: return `📌 ${t}`
+  }
+}
+
+/** Renders a deal in the style of the channel's posts (photo caption plus a "see the offer" button). */
+export function renderMessage(c: PostContent): Rendered {
+  const store = sourceById(c.source)?.ar ?? c.source
+  const pct = Math.round(c.pct)
+  const save = c.refPrice ? c.refPrice - c.price : 0
+  const verified = c.basis !== 'advertised'
+  const hook = pick(HOOKS[verified ? 'verified' : 'advertised'], c.key)(pct, save)
+  const name = c.name.length > 90 ? c.name.slice(0, 88).trimEnd() + '…' : c.name
+
   const lines = [
-    c.exceptional ? '⚠️ <b>نزول استثنائي — قيد التحقق</b>' : '',
-    `<b>${esc(c.name)}</b>`,
-    `🏬 ${esc(sourceById(c.source)?.ar ?? c.source)}`,
-    `💰 <b>${egp(c.price)}</b>`,
-    basisLine[c.basis](c.pct, c.refPrice),
+    `<b>${hook}</b>`,
+    '',
+    `<b>${esc(name)}</b>`,
+    '',
+    c.refPrice
+      ? `💰 <b>${num(c.price)} جنيه</b> بدل <s>${num(c.refPrice)}</s> · خصم ${pct}%`
+      : `💰 <b>${num(c.price)} جنيه</b> · خصم ${pct}%`,
   ]
+  if (save > 0) lines.push(`💸 هتوفّر ${num(save)} جنيه`)
   const unit = c.pack ? unitPrice(c.price, c.pack) : undefined
-  if (unit) lines.push(`⚖️ ${egp(unit.value)} / ${{ kg: 'كيلو', L: 'لتر', item: 'قطعة' }[unit.per]}`)
-  for (const p of c.promos) lines.push(`📌 ${promoAr[p.kind]}: ${esc(p.text)}`)
-  lines.push(`🕒 آخر فحص: ${cairoTime(c.checkedAt)}`)
-  lines.push(`🔗 <a href="${esc(c.url)}">افتح العرض</a>`)
-  return lines.filter(Boolean).join('\n')
+  if (unit) lines.push(`⚖️ ${num(unit.value)} جنيه / ${{ kg: 'كيلو', L: 'لتر', item: 'قطعة' }[unit.per]}`)
+  lines.push(evidenceLine(c))
+  if (c.exceptional) lines.push('⚠️ نزول كبير، لسه بنتأكد منه')
+  for (const p of c.promos) lines.push(promoLine(p))
+  lines.push(`🏪 ${esc(store)}`)
+  lines.push(`🕒 اتأكدنا من السعر ${cairoTime(c.checkedAt)}`)
+  lines.push('')
+  lines.push([c.category ? tag(categoryById(c.category)?.ar ?? c.category) : '', tag(store)].filter(Boolean).join(' '))
+
+  return { html: lines.join('\n'), button: { text: `🛒 شوف العرض على ${store}`, url: c.url } }
 }
 
 export type SendResult = { ok: true; messageId: number | null; dryRun: boolean } | { ok: false; retryable: boolean; retryAfterMs?: number; error: string }
 
-export type Sender = (channel: 'priority' | 'general', html: string, image?: string) => Promise<SendResult>
+export type Sender = (channel: 'priority' | 'general', html: string, image?: string, button?: Rendered['button']) => Promise<SendResult>
 
-export const telegramSender: Sender = async (channel, html, image) => {
+export const telegramSender: Sender = async (channel, html, image, button) => {
   const chatId = channel === 'priority' ? T.priorityChatId : T.generalChatId
   if (T.dryRun || !chatId) return { ok: true, messageId: null, dryRun: true }
   const method = image ? 'sendPhoto' : 'sendMessage'
+  const reply_markup = button ? { inline_keyboard: [[{ text: button.text, url: button.url }]] } : undefined
   const body = image
-    ? { chat_id: chatId, photo: image, caption: html.slice(0, 1024), parse_mode: 'HTML' }
-    : { chat_id: chatId, text: html, parse_mode: 'HTML', disable_web_page_preview: false }
+    ? { chat_id: chatId, photo: image, caption: html.slice(0, 1024), parse_mode: 'HTML', reply_markup }
+    : { chat_id: chatId, text: html, parse_mode: 'HTML', link_preview_options: { is_disabled: true }, reply_markup }
   try {
     const res = await fetch(`https://api.telegram.org/bot${T.token}/${method}`, {
       method: 'POST',
