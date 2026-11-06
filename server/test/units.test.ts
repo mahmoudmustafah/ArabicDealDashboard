@@ -30,6 +30,12 @@ test('real grocery and diaper titles', () => {
   assert.deepEqual(parsePack('Sunflower Oil 5Liters'), { value: 5000, unit: 'ml' })
 })
 
+test('Arabic diaper titles from Amazon', () => {
+  assert.deepEqual(parsePack('حفاضات أطفال من بامبرز، 70 قطعة، مقاس 5'), { qty: 70, unit: 'item' })
+  assert.deepEqual(parsePack('حفاضات اطفال مقاس 5 ماكسي (11-18 كجم) 76 قطعة'), { qty: 76, unit: 'item' })
+  assert.deepEqual(parsePack('زجاجة مياه بسعة 1.5 لتر من ايل'), { value: 1500, unit: 'ml' })
+})
+
 test('a smaller pack is not the same product', () => {
   assert.equal(samePack(parsePack('Oil 1.5 L'), parsePack('Oil 750 ml')), false)
   assert.equal(samePack(parsePack('Oil 1.5 L'), parsePack('Oil 1.5 لتر')), true)

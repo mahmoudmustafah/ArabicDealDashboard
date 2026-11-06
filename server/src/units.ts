@@ -27,7 +27,8 @@ export function parsePack(rawTitle: string): Pack {
     title.match(new RegExp(`(${D})\\s*[x×*]\\s*(${D})\\s*([a-zA-Z\\u0600-\\u06FF]+)`)) ??
     null
   const multiRev = title.match(new RegExp(`(${D})\\s*([a-zA-Z\\u0600-\\u06FF]+)\\s*[x×*]\\s*(${D})`))
-  const packOf = title.match(new RegExp(`(?:pack of|عبوة من|عدد|pcs|pieces|قطع(?:ة)?)\\s*(${D})|(${D})[\\s-]*(?:pcs|pieces?|pack|قطعة|قطع|حبة)\\b|(${D})\\s+(?:baby\\s+)?(?:diapers?|حفاضة)\\b`, 'i'))
+  // \b only knows Latin letters, so Arabic words need their own end-of-word check.
+  const packOf = title.match(new RegExp(`(?:pack of|عبوة من|عدد|pcs|pieces|قطع(?:ة)?)\\s*(${D})|(${D})[\\s-]*(?:pcs|pieces?|pack|قطعة|قطع|حبة|حفاضة)(?![\\p{L}])|(${D})\\s+(?:baby\\s+)?diapers?(?![\\p{L}])`, 'iu'))
   // "8+2 KG" is 10 kg with a free part, not 2 kg.
   const bonus = title.match(new RegExp(`(${D})\\s*\\+\\s*(${D})\\s*([a-zA-Z\\u0600-\\u06FF]+)`))
 
