@@ -72,3 +72,5 @@ Set these in `server/.env`, then restart the service:
 | `TELEGRAM_ALERT_CHAT_ID` | Mayar's own chat with the bot, for block warnings and the daily summary |
 
 The affiliate disclosure is in each channel's description and pinned message, not in the posts. That was Mayar's decision on 2026-11-07.
+
+The risk guard stops Amazon posts and the tag by itself if Amazon blocks over 85% of runs for two hours, or the daily product page check fails. Amazon scanning drops to once an hour meanwhile. After 6 clear hours everything comes back, and Mayar gets a Telegram message both times. `AMAZON_POSTING=off` is the manual stop.

@@ -8,7 +8,7 @@ import { repo as makeRepo } from '../src/repo.ts'
 import { runJob } from '../src/scanner.ts'
 import { scheduleBackfill } from '../src/backfill.ts'
 import { publication } from '../src/config.ts'
-import { amazonRisks, createRiskWatch } from '../src/riskWatch.ts'
+import { amazonPaused, amazonRisks, blocksSustained, createRiskWatch, setAmazonPaused } from '../src/riskWatch.ts'
 import { evaluateAndSchedule } from '../src/pipeline.ts'
 import { createScheduler } from '../src/scheduler.ts'
 import { FetchError, type Listing, type SourceAdapter } from '../src/sources/types.ts'
@@ -432,13 +432,12 @@ test('a Telegram 429 pauses all sending until its retry time', async () => {
   assert.ok(w.sent.length > 0)
 })
 
-test('risk watch warns once in 3 hours when over half of Amazon runs are blocked', async () => {
+test('the block warning fires at 80%, once in 3 hours, not at the usual level', async () => {
   const w = world()
   const run = db_run(w)
-  for (let i = 0; i < 10; i++) run(i % 2 ? 'blocked: x' : null)
-  run(null)
-  assert.deepEqual(amazonRisks(w.db, w.now), [], 'half is not over half')
-  for (let i = 0; i < 6; i++) run('blocked: x')
+  for (let i = 0; i < 10; i++) run(i < 6 ? 'blocked: x' : null)
+  assert.deepEqual(amazonRisks(w.db, w.now), [], 'the usual 60%')
+  for (let i = 0; i < 20; i++) run('blocked: x')
   const sent: string[] = []
   const check = createRiskWatch({ db: w.db, send: async (t) => sent.push(t), now: () => w.now, dailyHour: 99 })
   await check()
@@ -456,6 +455,7 @@ test('the daily summary goes out once, and a dead product page raises a warning'
   await check()
   assert.equal(sent.filter((t) => t.includes('ملخص')).length, 1)
   assert.equal(sent.filter((t) => t.includes('مش بتفتح')).length, 1)
+  setAmazonPaused(false)
 })
 
 function db_run(w: ReturnType<typeof world>) {
@@ -464,3 +464,56 @@ function db_run(w: ReturnType<typeof world>) {
       .prepare(`INSERT INTO scan_runs (job_id, source, category, due_at, started_at, finished_at, status, error) VALUES ('a', 'amazon', 'tvs', ?, ?, ?, 'partial', ?)`)
       .run(w.now, w.now - 60_000, w.now, error)
 }
+
+test('the guard pauses on two hours of heavy blocking, holds Amazon posts, and resumes after 6 clear hours', async (t) => {
+  t.after(() => setAmazonPaused(false))
+  const w = world()
+  const start = w.now
+  const blockedAt = (at: number) => w.db.prepare(`INSERT INTO scan_runs (job_id, source, category, due_at, started_at, finished_at, status, error) VALUES ('a', 'amazon', 'tvs', ?, ?, ?, 'failed', 'blocked: x')`).run(at, at, at)
+  for (let i = 0; i < 10; i++) blockedAt(start - 90 * MIN)
+  const sent: string[] = []
+  const check = createRiskWatch({ db: w.db, send: async (x) => sent.push(x), now: () => w.now, dailyHour: 99 })
+  await check()
+  assert.equal(amazonPaused(), false, 'one bad hour is not enough')
+  for (let i = 0; i < 10; i++) blockedAt(start - 10 * MIN)
+  await check()
+  assert.equal(amazonPaused(), true)
+  assert.match(sent.at(-1)!, /وقفت أمازون/)
+
+  const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: 'A', name: 'A', url: 'https://www.amazon.eg/dp/A', price: 500, available: true }, 'monitors', w.now)
+  const offer = w.repo.insertOffer({ product_id: id, detected_at: w.now, price: 500, ref_price: 1000, basis: 'advertised', pct: 50, labels: '[]', priority: 0, decision: 'publish', reason: 'x', status: 'scheduled' })
+  w.repo.insertDelivery(offer, 'general', w.now, 500)
+  await w.publisher.tick()
+  assert.equal(w.sent.length, 0)
+  assert.equal(w.deliveries()[0].state, 'scheduled', 'held, not cancelled')
+
+  w.advance(3 * 60 * MIN)
+  await check() // clear from here
+  w.advance(5 * 60 * MIN)
+  await check()
+  assert.equal(amazonPaused(), true, 'only 5 clear hours')
+  w.advance(61 * MIN)
+  await check()
+  assert.equal(amazonPaused(), false)
+  assert.match(sent.at(-1)!, /رجع يشتغل/)
+})
+
+test('a failed product page pauses Amazon, a blocked check does not', async (t) => {
+  t.after(() => setAmazonPaused(false))
+  const w = world()
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hourCycle: 'h23' }).format(w.now))
+  let result: boolean | null = null
+  const check = createRiskWatch({ db: w.db, send: async () => 0, productOk: async () => result, now: () => w.now, dailyHour: hour })
+  await check()
+  assert.equal(amazonPaused(), false)
+  const again = createRiskWatch({ db: w.db, send: async () => 0, productOk: async () => (result = false), now: () => w.now, dailyHour: hour })
+  await again()
+  assert.equal(amazonPaused(), true)
+})
+
+test('the usual level of Amazon blocking does not stop it', () => {
+  const w = world()
+  const run = db_run(w)
+  for (let i = 0; i < 20; i++) run(i < 13 ? 'blocked: x' : null)
+  assert.equal(blocksSustained(w.db, w.now), false)
+})

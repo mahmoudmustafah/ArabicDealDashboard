@@ -6,6 +6,7 @@ import { decide, EXISTING_OFFER, minPctFor } from './policy.ts'
 import type { Attempt, DeliveryRow, OfferRow, ProductRow, Repo } from './repo.ts'
 import type { SourceAdapter } from './sources/types.ts'
 import { BACKFILL_REASON } from './backfill.ts'
+import { amazonPaused } from './riskWatch.ts'
 import { parsePack } from './units.ts'
 import { renderMessage, type Sender } from './telegram.ts'
 import type { SourceId } from './config.ts'
@@ -92,6 +93,9 @@ export function createPublisher(deps: PublisherDeps) {
     const p = repo.product(offer.product_id)!
     const attempts = () => json<Attempt[]>(d.attempts, [])
     let price = d.posted_price ?? offer.price
+
+    // Held, not cancelled: it goes out, rechecked, once Amazon is back on.
+    if (p.source === 'amazon' && amazonPaused()) return
 
     if (amazonPostingOff && p.source === 'amazon' && d.state === 'scheduled') {
       d.state = 'cancelled'

@@ -1,4 +1,5 @@
 import { jobs as allJobs, schedule as S, sources, type JobDef, type SourceId } from './config.ts'
+import { amazonPaused, GUARD } from './riskWatch.ts'
 import { runJob, type ScanDeps } from './scanner.ts'
 
 /**
@@ -61,6 +62,8 @@ export function createScheduler(deps: ScanDeps, jobs: JobDef[] = allJobs) {
       const due = slotFor(job, now)
       if (s.lastSlot !== undefined && s.lastSlot >= due) continue // slot already handled
       s.lastSlot = due
+      // While Amazon is paused, scan it less often so the block can clear and price history keeps going.
+      if (job.source === 'amazon' && amazonPaused() && s.lastStartedDue !== undefined && due - s.lastStartedDue < GUARD.pausedScanEveryMs) continue
       if (s.state !== 'idle') {
         s.overlaps++ // previous run still going when this slot arrived: skip, don't double up
         continue
