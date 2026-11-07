@@ -28,7 +28,8 @@ const publisher = createPublisher({
   sendGapMs: publication.sendGapMs,
   // Dry runs send nothing, so they must not load store pages.
   capture: (channel, source, url, price) =>
-    telegram.token && telegram.chatId(channel) ? screenshot(source, url, price) : Promise.resolve(null),
+    // Amazon posts use the product image: screenshots add load and blocks there, and Mayar said the image is fine.
+    source !== 'amazon' && telegram.token && telegram.chatId(channel) ? screenshot(source, url, price) : Promise.resolve(null),
 })
 
 if (telegram.dryRun) console.warn('[telegram] TELEGRAM_BOT_TOKEN not set: deliveries are recorded as dry-run, nothing is sent')
