@@ -1,5 +1,7 @@
-import { DAY, HOUR, NOW } from './data'
 import { isAr, L } from './i18n'
+
+export const HOUR = 3600e3
+export const DAY = 24 * HOUR
 
 const tz = 'Africa/Cairo'
 const loc = () => (isAr() ? 'ar-EG-u-nu-latn' : 'en-GB')
@@ -24,7 +26,7 @@ function unitAr(n: number, one: string, two: string, few: string, many: string) 
 const unitEn = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 export function ago(t: number) {
-  const d = NOW - t
+  const d = Date.now() - t
   if (d < 60e3) return L('دلوقتي', 'just now')
   if (d < HOUR) {
     const n = Math.round(d / 60e3)

@@ -1,0 +1,3 @@
+{"products":[{"id":1,"title":"Royal Oud","handle":"royal-oud","vendor":"Emarati","images":[{"src":"https://cdn/oud.jpg"}],
+ "variants":[{"id":11,"title":"50 ml","price":"900.00","compare_at_price":"1800.00","available":true},
+             {"id":12,"title":"100 ml","price":"1350.00","compare_at_price":"3400.00","available":false}]}]}
