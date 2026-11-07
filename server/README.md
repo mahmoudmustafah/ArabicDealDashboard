@@ -66,7 +66,9 @@ Set these in `server/.env`, then restart the service:
 
 | Setting | Effect |
 |---|---|
-| `AMAZON_AFFILIATE_TAG=orodmano-21` | Adds the tag to Amazon links in posts, and a disclosure line |
-| `AMAZON_AFFILIATE=off` | Stops adding the tag and the disclosure |
+| `AMAZON_AFFILIATE_TAG=orodmano-21` | Adds the tag to Amazon links in posts |
+| `AMAZON_AFFILIATE=off` | Stops adding the tag |
 | `AMAZON_POSTING=off` | Stops all Amazon posts and cancels queued ones. Scanning continues |
 | `TELEGRAM_ALERT_CHAT_ID` | Mayar's own chat with the bot, for block warnings and the daily summary |
+
+The affiliate disclosure is in each channel's description and pinned message, not in the posts. That was Mayar's decision on 2026-11-07.

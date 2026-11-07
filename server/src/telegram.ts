@@ -99,8 +99,6 @@ function promoLine(p: Promo) {
   }
 }
 
-export const AMAZON_DISCLOSURE = 'As an Amazon Associate I earn from qualifying purchases'
-
 /** Adds the Associates tag to an Amazon link. Other stores' links are left alone. */
 export function affiliateUrl(source: string, url: string, tag = amazonAffiliateTag) {
   if (source !== 'amazon' || !tag) return url
@@ -140,7 +138,6 @@ export function renderMessage(c: PostContent): Rendered {
   lines.push('', [c.category ? tag(categoryById(c.category)?.ar ?? c.category) : '', tag(store)].filter(Boolean).join(' '))
 
   const affiliate = c.affiliateTag ?? amazonAffiliateTag
-  if (c.source === 'amazon' && affiliate) lines.push('', `<i>${AMAZON_DISCLOSURE}</i>`)
 
   return { html: lines.join('\n'), button: { text: `🛒 شوف العرض على ${store}`, url: affiliateUrl(c.source, c.url, affiliate) } }
 }
