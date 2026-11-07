@@ -8,6 +8,7 @@ import { repo as makeRepo } from '../src/repo.ts'
 import { runJob } from '../src/scanner.ts'
 import { scheduleBackfill } from '../src/backfill.ts'
 import { publication } from '../src/config.ts'
+import { amazonRisks, createRiskWatch } from '../src/riskWatch.ts'
 import { evaluateAndSchedule } from '../src/pipeline.ts'
 import { createScheduler } from '../src/scheduler.ts'
 import { FetchError, type Listing, type SourceAdapter } from '../src/sources/types.ts'
@@ -430,3 +431,36 @@ test('a Telegram 429 pauses all sending until its retry time', async () => {
   await w.publisher.tick()
   assert.ok(w.sent.length > 0)
 })
+
+test('risk watch warns once in 3 hours when over half of Amazon runs are blocked', async () => {
+  const w = world()
+  const run = db_run(w)
+  for (let i = 0; i < 10; i++) run(i % 2 ? 'blocked: x' : null)
+  run(null)
+  assert.deepEqual(amazonRisks(w.db, w.now), [], 'half is not over half')
+  for (let i = 0; i < 6; i++) run('blocked: x')
+  const sent: string[] = []
+  const check = createRiskWatch({ db: w.db, send: async (t) => sent.push(t), now: () => w.now, dailyHour: 99 })
+  await check()
+  await check()
+  assert.equal(sent.length, 1)
+  assert.match(sent[0], /أمازون حجب/)
+})
+
+test('the daily summary goes out once, and a dead product page raises a warning', async () => {
+  const w = world()
+  const sent: string[] = []
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', hourCycle: 'h23' }).format(w.now))
+  const check = createRiskWatch({ db: w.db, send: async (t) => sent.push(t), productOk: async () => false, now: () => w.now, dailyHour: hour })
+  await check()
+  await check()
+  assert.equal(sent.filter((t) => t.includes('ملخص')).length, 1)
+  assert.equal(sent.filter((t) => t.includes('مش بتفتح')).length, 1)
+})
+
+function db_run(w: ReturnType<typeof world>) {
+  return (error: string | null) =>
+    w.db
+      .prepare(`INSERT INTO scan_runs (job_id, source, category, due_at, started_at, finished_at, status, error) VALUES ('a', 'amazon', 'tvs', ?, ?, ?, 'partial', ?)`)
+      .run(w.now, w.now - 60_000, w.now, error)
+}

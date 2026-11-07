@@ -59,3 +59,14 @@ pnpm scan-once amazon-monitors   # one job, printed, for checking collectors aga
 | `GET /api/decisions` | Every publish/skip decision with its reason |
 
 The dashboard still uses its sample data. Wiring it to this API is the next step.
+
+## Amazon affiliate switches
+
+Set these in `server/.env`, then restart the service:
+
+| Setting | Effect |
+|---|---|
+| `AMAZON_AFFILIATE_TAG=orodmano-21` | Adds the tag to Amazon links in posts, and a disclosure line |
+| `AMAZON_AFFILIATE=off` | Stops adding the tag and the disclosure |
+| `AMAZON_POSTING=off` | Stops all Amazon posts and cancels queued ones. Scanning continues |
+| `TELEGRAM_ALERT_CHAT_ID` | Mayar's own chat with the bot, for block warnings and the daily summary |

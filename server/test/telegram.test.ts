@@ -60,3 +60,12 @@ test('the post for a small pack has no per-litre price', () => {
   const { html } = renderMessage({ key: 1, name: 'Serum 4ml', source: 'noon', price: 125, refPrice: 250, basis: 'advertised', pct: 50, promos: [], exceptional: false, checkedAt: 0, url: 'https://www.noon.com/x', pack: { value: 4, unit: 'ml' } })
   assert.doesNotMatch(html, /⚖️/)
 })
+
+test('Amazon posts carry the affiliate tag and the disclosure; other stores carry neither', () => {
+  const amazon = renderMessage({ key: 1, name: 'A', source: 'amazon', price: 80, refPrice: 100, basis: 'advertised', pct: 20, promos: [], exceptional: false, checkedAt: 0, url: 'https://www.amazon.eg/dp/B000000001', affiliateTag: 'orodmano-21' })
+  assert.equal(amazon.button.url, 'https://www.amazon.eg/dp/B000000001?tag=orodmano-21')
+  assert.match(amazon.html, /<i>As an Amazon Associate I earn from qualifying purchases<\/i>$/)
+  const noon = renderMessage({ key: 2, name: 'N', source: 'noon', price: 80, refPrice: 100, basis: 'advertised', pct: 20, promos: [], exceptional: false, checkedAt: 0, url: 'https://www.noon.com/egypt-en/x/N1/p/', affiliateTag: 'orodmano-21' })
+  assert.equal(noon.button.url, 'https://www.noon.com/egypt-en/x/N1/p/')
+  assert.doesNotMatch(noon.html, /Amazon Associate/)
+})

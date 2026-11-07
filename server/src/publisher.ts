@@ -1,4 +1,4 @@
-import { evidence as E, ownChannel, publication as P, type Channel } from './config.ts'
+import { amazonPostingOff, evidence as E, ownChannel, publication as P, type Channel } from './config.ts'
 import { json, type DB } from './db.ts'
 import { analyze, type Basis } from './evaluate.ts'
 import { HISTORY_WINDOW_MS } from './pipeline.ts'
@@ -92,6 +92,14 @@ export function createPublisher(deps: PublisherDeps) {
     const p = repo.product(offer.product_id)!
     const attempts = () => json<Attempt[]>(d.attempts, [])
     let price = d.posted_price ?? offer.price
+
+    if (amazonPostingOff && p.source === 'amazon' && d.state === 'scheduled') {
+      d.state = 'cancelled'
+      d.cancel_reason = 'Amazon posting is switched off'
+      d.next_attempt_at = null
+      save(d)
+      return
+    }
 
     // A category with its own channel never posts anywhere else, even if it was queued before the rule.
     const own = ownChannel(p.category)

@@ -200,7 +200,14 @@ export const categoryChannel: Partial<Record<CategoryId, Channel>> = {
 }
 export const ownChannel = (category: string) => categoryChannel[category as CategoryId]
 
+/** Amazon Associates tag added to Amazon links in posts. Empty means plain links and no disclosure. */
+export const amazonAffiliateTag = process.env.AMAZON_AFFILIATE === 'off' ? '' : (process.env.AMAZON_AFFILIATE_TAG ?? '')
+/** Kill switch: AMAZON_POSTING=off in server/.env, then restart, stops every Amazon post. Scanning continues. */
+export const amazonPostingOff = process.env.AMAZON_POSTING === 'off'
+
 export const telegram = {
+  /** Mayar's own chat with the bot, for warnings about the service. */
+  alertChatId: process.env.TELEGRAM_ALERT_CHAT_ID ?? '',
   token: process.env.TELEGRAM_BOT_TOKEN ?? '',
   priorityChatId: process.env.TELEGRAM_PRIORITY_CHAT_ID ?? '',
   generalChatId: process.env.TELEGRAM_GENERAL_CHAT_ID ?? '',

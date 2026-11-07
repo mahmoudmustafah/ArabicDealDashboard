@@ -1,4 +1,4 @@
-import { publication as P, ownChannel } from './config.ts'
+import { amazonPostingOff, publication as P, ownChannel } from './config.ts'
 import type { DB } from './db.ts'
 import { analyze, type Analysis } from './evaluate.ts'
 import { decide, EXISTING_OFFER, isNewOffer, type Decision } from './policy.ts'
@@ -26,6 +26,7 @@ export function evaluateAndSchedule(db: DB, repo: Repo, productId: number, now: 
   const verdict = decide(a, { now, available: p.available === null ? null : !!p.available, lastPost: repo.lastPost(productId) })
 
   const fresh = isNewOffer(a, p.discovered_at)
+  if (amazonPostingOff && p.source === 'amazon') return { analysis: a, decision: { ...verdict, publish: false, reason: 'Amazon posting is switched off' } }
   const d: Decision = verdict.publish && !fresh && verdict.pct < P.existingMinPct ? { ...verdict, publish: false, reason: `Older offer under ${P.existingMinPct}%` } : verdict
 
   if (!d.publish) {

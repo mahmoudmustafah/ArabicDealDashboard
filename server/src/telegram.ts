@@ -1,4 +1,4 @@
-import { categoryById, sourceById, telegram as T, timezone, type Channel } from './config.ts'
+import { amazonAffiliateTag, categoryById, sourceById, telegram as T, timezone, type Channel } from './config.ts'
 import type { Basis } from './evaluate.ts'
 import type { Promo } from './sources/types.ts'
 import { postUnitPrice, type Pack } from './units.ts'
@@ -28,6 +28,8 @@ export type PostContent = {
   url: string
   image?: string
   pack?: Pack
+  /** Defaults to the configured Amazon Associates tag. */
+  affiliateTag?: string
 }
 
 export type Rendered = { html: string; button: { text: string; url: string } }
@@ -97,6 +99,16 @@ function promoLine(p: Promo) {
   }
 }
 
+export const AMAZON_DISCLOSURE = 'As an Amazon Associate I earn from qualifying purchases'
+
+/** Adds the Associates tag to an Amazon link. Other stores' links are left alone. */
+export function affiliateUrl(source: string, url: string, tag = amazonAffiliateTag) {
+  if (source !== 'amazon' || !tag) return url
+  const u = new URL(url)
+  u.searchParams.set('tag', tag)
+  return u.toString()
+}
+
 /** Renders a deal in the style of the channel's posts (photo caption plus a "see the offer" button). */
 export function renderMessage(c: PostContent): Rendered {
   const store = sourceById(c.source)?.ar ?? c.source
@@ -127,7 +139,10 @@ export function renderMessage(c: PostContent): Rendered {
   lines.push('', `🏪 ${esc(store)}`, `🕒 اتأكدنا من السعر ${cairoTime(c.checkedAt)}`)
   lines.push('', [c.category ? tag(categoryById(c.category)?.ar ?? c.category) : '', tag(store)].filter(Boolean).join(' '))
 
-  return { html: lines.join('\n'), button: { text: `🛒 شوف العرض على ${store}`, url: c.url } }
+  const affiliate = c.affiliateTag ?? amazonAffiliateTag
+  if (c.source === 'amazon' && affiliate) lines.push('', `<i>${AMAZON_DISCLOSURE}</i>`)
+
+  return { html: lines.join('\n'), button: { text: `🛒 شوف العرض على ${store}`, url: affiliateUrl(c.source, c.url, affiliate) } }
 }
 
 export type SendResult = { ok: true; messageId: number | null; dryRun: boolean } | { ok: false; retryable: boolean; retryAfterMs?: number; error: string }
