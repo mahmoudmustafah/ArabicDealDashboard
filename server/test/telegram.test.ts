@@ -67,3 +67,11 @@ test('only Amazon links carry the affiliate tag', () => {
   const noon = renderMessage({ key: 2, name: 'N', source: 'noon', price: 80, refPrice: 100, basis: 'advertised', pct: 20, promos: [], exceptional: false, checkedAt: 0, url: 'https://www.noon.com/egypt-en/x/N1/p/', affiliateTag: 'orodmano-21' })
   assert.equal(noon.button.url, 'https://www.noon.com/egypt-en/x/N1/p/')
 })
+
+test('the caption carries the same link as the button', () => {
+  const amazon = renderMessage({ key: 1, name: 'A', source: 'amazon', price: 80, refPrice: 100, basis: 'advertised', pct: 20, promos: [], exceptional: false, checkedAt: 0, url: 'https://www.amazon.eg/dp/B000000001', affiliateTag: 'orodmano-21' })
+  assert.match(amazon.html, /🔗 <a href="https:\/\/www\.amazon\.eg\/dp\/B000000001\?tag=orodmano-21">افتح العرض على أمازون مصر<\/a>/)
+  assert.equal(amazon.button.url, 'https://www.amazon.eg/dp/B000000001?tag=orodmano-21')
+  const noon = renderMessage({ key: 2, name: 'N', source: 'noon', price: 80, refPrice: 100, basis: 'advertised', pct: 20, promos: [], exceptional: false, checkedAt: 0, url: 'https://www.noon.com/egypt-en/x/N1/p/?a=1&b=2', affiliateTag: 'orodmano-21' })
+  assert.match(noon.html, /href="https:\/\/www\.noon\.com\/egypt-en\/x\/N1\/p\/\?a=1&amp;b=2"/)
+})

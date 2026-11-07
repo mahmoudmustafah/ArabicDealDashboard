@@ -118,6 +118,7 @@ export function renderMessage(c: PostContent): Rendered {
   const hook = pick(hooks, c.key)(pct, save)
   const name = c.name.length > 90 ? c.name.slice(0, 88).trimEnd() + '…' : c.name
 
+  const link = affiliateUrl(c.source, c.url, c.affiliateTag ?? amazonAffiliateTag)
   const lines = [
     `<b>${hook}</b>`,
     '',
@@ -135,11 +136,12 @@ export function renderMessage(c: PostContent): Rendered {
   const promos = c.promos.filter((p) => !/\{[^}]*:/.test(p.text)).slice(0, 3)
   if (promos.length) lines.push('', ...promos.map(promoLine))
   lines.push('', `🏪 ${esc(store)}`, `🕒 اتأكدنا من السعر ${cairoTime(c.checkedAt)}`)
+  // Some Telegram views don't show the button, so the caption carries the link too.
+  lines.push('', `🔗 <a href="${esc(link)}">افتح العرض على ${esc(store)}</a>`)
   lines.push('', [c.category ? tag(categoryById(c.category)?.ar ?? c.category) : '', tag(store)].filter(Boolean).join(' '))
 
-  const affiliate = c.affiliateTag ?? amazonAffiliateTag
 
-  return { html: lines.join('\n'), button: { text: `🛒 شوف العرض على ${store}`, url: affiliateUrl(c.source, c.url, affiliate) } }
+  return { html: lines.join('\n'), button: { text: `🛒 شوف العرض على ${store}`, url: link } }
 }
 
 export type SendResult = { ok: true; messageId: number | null; dryRun: boolean } | { ok: false; retryable: boolean; retryAfterMs?: number; error: string }
