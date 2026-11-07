@@ -136,8 +136,8 @@ export function renderMessage(c: PostContent): Rendered {
   const promos = c.promos.filter((p) => !/\{[^}]*:/.test(p.text)).slice(0, 3)
   if (promos.length) lines.push('', ...promos.map(promoLine))
   lines.push('', `🏪 ${esc(store)}`, `🕒 اتأكدنا من السعر ${cairoTime(c.checkedAt)}`)
-  // Some Telegram views don't show the button, so the caption carries the link too.
-  lines.push('', `🔗 <a href="${esc(link)}">افتح العرض على ${esc(store)}</a>`)
+  // Some Telegram views don't show the button, and a plain URL still works when a post is forwarded.
+  lines.push('', `🔗 لينك العرض: ${esc(link)}`)
   lines.push('', [c.category ? tag(categoryById(c.category)?.ar ?? c.category) : '', tag(store)].filter(Boolean).join(' '))
 
 
