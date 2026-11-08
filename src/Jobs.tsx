@@ -4,10 +4,15 @@ import {
   CircleDashed,
   Flame,
   Gauge,
+  Baby,
   Gift,
+  Droplets,
   Headphones,
+  HardDrive,
+  Keyboard,
   Loader2,
   Monitor,
+  ShoppingBasket,
   Smartphone,
   Sparkles,
   SprayCan,
@@ -15,228 +20,109 @@ import {
   Tv,
   type LucideIcon,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { NOW } from './data'
-import { clock, Mm, mmss, SpeedControl, useSimClock } from './sim'
-import { SampleTag, cx } from './ui'
-import { L, tx, type T as Tx } from './i18n'
+import { useState } from 'react'
+import { api, useApi, type JobView, type Meta, type ScanRun, type SourceId } from './api'
+import { clock, Mm, mmss, useNow } from './clock'
+import { runError, store, stores } from './deal'
+import { isAr, L } from './i18n'
+import { ApiDown, Loading, SourceChip, cx } from './ui'
 
-// SAMPLE DATA — simulated search jobs. Each category runs a deal search every 10 minutes.
-const MIN = 60e3
-export const CYCLE = 10 * MIN
-const EPOCH = NOW - 1000 * CYCLE
+const CYCLE = 10 * 60e3
 
-type SourceId = 'amazon' | 'noon' | 'emarati'
-export const jobSources: { id: SourceId; label: string; short: Tx }[] = [
-  { id: 'amazon', label: 'Amazon Egypt', short: { ar: 'أمازون', en: 'Amazon' } },
-  { id: 'noon', label: 'Noon Egypt', short: { ar: 'نون', en: 'Noon' } },
-  { id: 'emarati', label: 'Emarati Scents', short: { ar: 'إماراتي سنتس', en: 'Emarati' } },
-]
-const sourceLabel = (id: SourceId) => jobSources.find((x) => x.id === id)!.label
-
-type Job = {
-  id: string
-  source: SourceId
-  label: Tx
-  icon: LucideIcon
-  offsetMin: number
-  durationMin: number
-  pages: number
+const icons: Record<string, LucideIcon> = {
+  mobiles: Smartphone,
+  tvs: Tv,
+  monitors: Monitor,
+  electronics: Headphones,
+  keyboards: Keyboard,
+  storage: HardDrive,
+  perfumes: SprayCan,
+  cosmetics: Sparkles,
+  'mens-fragrance': SprayCan,
+  'womens-fragrance': Sparkles,
+  'oud-bakhoor': Flame,
+  'gift-sets': Gift,
+  supermarket: ShoppingBasket,
+  'home-care': Droplets,
+  diapers: Baby,
+  'baby-care': Baby,
 }
 
-const amazonJobs: Omit<Job, 'source'>[] = [
-  { id: 'tv', label: { ar: 'تلفزيونات', en: "TVs" }, icon: Tv, offsetMin: 0.5, durationMin: 5.5, pages: 24 },
-  { id: 'mobile', label: { ar: 'موبايلات', en: "Mobiles" }, icon: Smartphone, offsetMin: 2, durationMin: 6.5, pages: 32 },
-  { id: 'perfume', label: { ar: 'عطور', en: "Perfumes" }, icon: SprayCan, offsetMin: 6, durationMin: 2.5, pages: 14 },
-  { id: 'cosmetics', label: { ar: 'مستحضرات تجميل', en: "Cosmetics" }, icon: Sparkles, offsetMin: 7.5, durationMin: 4, pages: 20 },
-  { id: 'monitors', label: { ar: 'شاشات كمبيوتر', en: "Monitors" }, icon: Monitor, offsetMin: 0, durationMin: 4, pages: 16 },
-  { id: 'electronics', label: { ar: 'سماعات وإلكترونيات', en: "Headphones & electronics" }, icon: Headphones, offsetMin: 4.5, durationMin: 3, pages: 18 },
-]
-const noonJobs: Omit<Job, 'source'>[] = [
-  { id: 'n-mobile', label: { ar: 'موبايلات', en: "Mobiles" }, icon: Smartphone, offsetMin: 1, durationMin: 6, pages: 30 },
-  { id: 'n-tv', label: { ar: 'تلفزيونات', en: "TVs" }, icon: Tv, offsetMin: 3.5, durationMin: 5, pages: 22 },
-  { id: 'n-perfume', label: { ar: 'عطور', en: "Perfumes" }, icon: SprayCan, offsetMin: 7, durationMin: 2.5, pages: 14 },
-  { id: 'n-cosmetics', label: { ar: 'مستحضرات تجميل', en: "Cosmetics" }, icon: Sparkles, offsetMin: 8.5, durationMin: 3.5, pages: 18 },
-]
-const emaratiJobs: Omit<Job, 'source'>[] = [
-  { id: 'e-men', label: { ar: 'عطور رجالي', en: "Men's perfumes" }, icon: SprayCan, offsetMin: 0.5, durationMin: 2, pages: 8 },
-  { id: 'e-women', label: { ar: 'عطور حريمي', en: "Women's perfumes" }, icon: Sparkles, offsetMin: 3, durationMin: 2, pages: 8 },
-  { id: 'e-oud', label: { ar: 'عود وبخور', en: "Oud & bakhoor" }, icon: Flame, offsetMin: 5.5, durationMin: 1.5, pages: 6 },
-  { id: 'e-gifts', label: { ar: 'مجموعات هدايا', en: "Gift sets" }, icon: Gift, offsetMin: 8, durationMin: 1.5, pages: 5 },
-]
-const jobs: Job[] = [
-  ...amazonJobs.map((j) => ({ ...j, source: 'amazon' as const })),
-  ...noonJobs.map((j) => ({ ...j, source: 'noon' as const })),
-  ...emaratiJobs.map((j) => ({ ...j, source: 'emarati' as const })),
-]
-
-type RoundStatus = 'success' | 'partial' | 'failed'
-type Round = {
-  k: number
-  start: number
-  end: number
-  status: RoundStatus
-  pagesRead: number
-  products: number
-  deals: number
-  error?: Tx
-}
-
-function hash(s: string) {
-  let x = 2166136261
-  for (let i = 0; i < s.length; i++) x = Math.imul(x ^ s.charCodeAt(i), 16777619)
-  return ((x >>> 0) % 10000) / 10000
-}
-
-const errors: Tx[] = [
-  { ar: 'الموقع رجّع صفحة تحقق (CAPTCHA)', en: 'Site returned a CAPTCHA page' },
-  { ar: 'انتهت مهلة الاتصال بالموقع', en: 'Connection to the site timed out' },
-  { ar: 'صفحة النتايج اتغير شكلها', en: 'Results page layout changed' },
-]
-
-function round(job: Job, k: number): Round {
-  const r = hash(job.id + k)
-  const status: RoundStatus = r < 0.08 ? 'failed' : r < 0.18 ? 'partial' : 'success'
-  const start = EPOCH + job.offsetMin * MIN + k * CYCLE
-  const dur = job.durationMin * MIN * (0.85 + 0.3 * hash(job.id + 'd' + k)) * (status === 'failed' ? 0.3 : 1)
-  const pagesRead =
-    status === 'success'
-      ? job.pages
-      : status === 'partial'
-        ? Math.round(job.pages * (0.55 + 0.25 * hash(job.id + 'p' + k)))
-        : Math.round(job.pages * 0.25)
-  const products = pagesRead * 24
-  const deals = status === 'failed' ? 0 : Math.round(products * (0.03 + 0.05 * hash(job.id + 'x' + k)))
-  return {
-    k,
-    start,
-    end: start + dur,
-    status,
-    pagesRead,
-    products,
-    deals,
-    error: status === 'failed' ? errors[Math.floor(hash(job.id + 'e' + k) * errors.length)] : undefined,
-  }
-}
-
-type JobState = {
-  job: Job
-  running?: { round: Round; progress: number; pages: number }
-  last: Round
-  nextStart: number
-  history: Round[]
-}
-
-function stateAt(job: Job, t: number): JobState {
-  const k = Math.floor((t - EPOCH - job.offsetMin * MIN) / CYCLE)
-  const cur = round(job, k)
-  const isRunning = t < cur.end
-  const lastK = isRunning ? k - 1 : k
-  const history = Array.from({ length: 8 }, (_, i) => round(job, lastK - i))
-  return {
-    job,
-    running: isRunning
-      ? {
-          round: cur,
-          progress: (t - cur.start) / (cur.end - cur.start),
-          pages: Math.max(1, Math.floor(((t - cur.start) / (cur.end - cur.start)) * cur.pagesRead)),
-        }
-      : undefined,
-    last: history[0],
-    nextStart: round(job, k + 1).start,
-    history,
-  }
-}
-
-const roundMeta = (): Record<RoundStatus, { label: string; cls: string; bar: string; icon: LucideIcon }> => ({
+type RunStatus = ScanRun['status']
+const roundMeta = (): Record<RunStatus, { label: string; cls: string; bar: string; icon: LucideIcon }> => ({
   success: { label: L('خلصت', 'Done'), cls: 'bg-drop-soft text-drop', bar: 'bg-drop', icon: CheckCircle2 },
   partial: { label: L('جزئية', 'Partial'), cls: 'bg-adv-soft text-ink', bar: 'bg-mute', icon: CircleDashed },
   failed: { label: L('فشلت', 'Failed'), cls: 'bg-fail-soft text-fail', bar: 'bg-fail', icon: AlertOctagon },
+  running: { label: L('جارية', 'Running'), cls: 'bg-ink text-white', bar: 'bg-ink', icon: Loader2 },
 })
 
-function RoundBadge({ s }: { s: RoundStatus }) {
+function RoundBadge({ s }: { s: RunStatus }) {
   const m = roundMeta()[s]
   return (
     <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold', m.cls)}>
-      <m.icon className="size-3.5" />
+      <m.icon className={cx('size-3.5', s === 'running' && 'animate-spin')} />
       {m.label}
     </span>
   )
 }
 
 type Filter = 'all' | 'running' | 'waiting' | 'issues'
+const finished = (j: JobView) => j.runs.filter((r) => r.status !== 'running')
+const lastRun = (j: JobView): ScanRun | undefined => finished(j)[0]
+const hasIssue = (j: JobView) => {
+  const r = lastRun(j)
+  return j.overdue || (!!r && r.status !== 'success')
+}
 
-export function Jobs() {
-  const [speed, setSpeed] = useState(1)
+export function Jobs({ info }: { info?: Meta }) {
+  const q = useApi(api.jobs, 15_000)
+  const t = useNow()
   const [filter, setFilter] = useState<Filter>('all')
   const [source, setSource] = useState<'all' | SourceId>('all')
-  const t = useSimClock(speed)
-  const states = useMemo(
-    () => jobs.filter((j) => source === 'all' || j.source === source).map((j) => stateAt(j, t)),
-    [t, source],
-  )
+  if (!q.data) return q.error ? <ApiDown onRetry={q.reload} /> : <Loading />
 
-  const running = states.filter((s) => s.running)
-  const waiting = states.filter((s) => !s.running)
-  const issues = states.filter((s) => s.last.status !== 'success')
-  const soonest = [...waiting].sort((a, b) => a.nextStart - b.nextStart)[0]
-  const dealsLast = states.reduce((n, s) => n + s.last.deals, 0)
-
-  const shown = states.filter((s) =>
-    filter === 'running' ? s.running : filter === 'waiting' ? !s.running : filter === 'issues' ? s.last.status !== 'success' : true,
-  )
-  const cyclePos = (((t - EPOCH) % CYCLE) + CYCLE) % CYCLE
+  const all = q.data
+  const label = (id: string) => {
+    const c = info?.categories.find((x) => x.id === id)
+    return c ? (isAr() ? c.ar : c.en) : id
+  }
+  const states = all.filter((j) => source === 'all' || j.source === source)
+  const running = states.filter((j) => j.state === 'running')
+  const waiting = states.filter((j) => j.state !== 'running')
+  const issues = states.filter(hasIssue)
+  const soonest = [...waiting].filter((j) => j.nextDueAt).sort((a, b) => a.nextDueAt! - b.nextDueAt!)[0]
+  const dealsLast = states.reduce((n, j) => n + (lastRun(j)?.offers_found ?? 0), 0)
+  const shown = states.filter((j) => (filter === 'running' ? j.state === 'running' : filter === 'waiting' ? j.state !== 'running' : filter === 'issues' ? hasIssue(j) : true))
+  const cyclePos = t % CYCLE
   const log = states
-    .flatMap((s) => s.history.slice(0, 4).map((r) => ({ job: s.job, r })))
-    .sort((a, b) => b.r.end - a.r.end)
-    .slice(0, 10)
+    .flatMap((j) => finished(j).slice(0, 4))
+    .sort((a, b) => (b.finished_at ?? 0) - (a.finished_at ?? 0))
+    .slice(0, 12)
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-[13px] text-body">
-          <span className="relative flex size-2.5">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-drop opacity-60" />
-            <span className="relative inline-flex size-2.5 rounded-full bg-drop" />
-          </span>
-          {L('مباشر · الساعة', 'Live ·')} <b className="num text-ink">{clock(t)}</b>
-          <span className="hidden text-mute @xl:inline">
-            · {L(`كل قسم بيتبحث فيه كل 10 دقائق في ${jobSources.length} متاجر`, `each category is searched every 10 minutes across ${jobSources.length} stores`)}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <SpeedControl speed={speed} setSpeed={setSpeed} />
-          <SampleTag />
-        </div>
+      {q.error && <ApiDown compact onRetry={q.reload} />}
+      <div className="flex items-center gap-2 text-[13px] text-body">
+        <span className="relative flex size-2.5">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-drop opacity-60" />
+          <span className="relative inline-flex size-2.5 rounded-full bg-drop" />
+        </span>
+        {L('مباشر · الساعة', 'Live ·')} <b className="num text-ink">{clock(t)}</b>
+        <span className="hidden text-mute @xl:inline">
+          · {L('نون وإماراتي سنتس كل 10 دقائق، وأمازون كل 30 دقيقة', 'Noon and Emarati Scents every 10 minutes, Amazon every 30')}
+        </span>
       </div>
 
       <section className="grid grid-cols-2 gap-3 @3xl:grid-cols-4">
         <Kpi
           label={L('جاري البحث الآن', 'Searching now')}
           value={String(running.length)}
-          sub={
-            running.map((s) => `${tx(s.job.label)} (${tx(jobSources.find((x) => x.id === s.job.source)!.short)})`).join(L('، ', ', ')) ||
-            L('مفيش', 'None')
-          }
+          sub={running.map((j) => `${label(j.category)} (${store(j.source).short()})`).join(L('، ', ', ')) || L('مفيش', 'None')}
           dot="bg-ink"
         />
-        <Kpi
-          label={L('خلصت ومستنية الجولة الجاية', 'Done, waiting for next round')}
-          value={String(waiting.length)}
-          sub={L(`من ${states.length} عملية بحث`, `of ${states.length} search jobs`)}
-          dot="bg-drop"
-        />
-        <Kpi
-          label={L('أقرب جولة جاية', 'Next round')}
-          value={soonest ? mmss(soonest.nextStart - t) : '—'}
-          sub={soonest ? `${tx(soonest.job.label)} · ${sourceLabel(soonest.job.source)}` : ''}
-          ltr
-        />
-        <Kpi
-          label={L('عروض في آخر جولة', 'Deals in last round')}
-          value={String(dealsLast)}
-          sub={L('مجموع كل الأقسام', 'Across all categories')}
-        />
+        <Kpi label={L('مستنية الجولة الجاية', 'Waiting for next round')} value={String(waiting.length)} sub={L(`من ${states.length} عملية بحث`, `of ${states.length} search jobs`)} dot="bg-drop" />
+        <Kpi label={L('أقرب جولة جاية', 'Next round')} value={soonest ? mmss(soonest.nextDueAt! - t) : '—'} sub={soonest ? `${label(soonest.category)} · ${store(soonest.source).label}` : ''} ltr />
+        <Kpi label={L('عروض في آخر جولة', 'Deals in last round')} value={dealsLast.toLocaleString('en-US')} sub={L('مجموع كل الأقسام', 'Across all categories')} />
       </section>
 
       {/* 10-minute cycle timeline */}
@@ -246,28 +132,26 @@ export function Jobs() {
             <Timer className="size-4" /> {L('دورة الـ 10 دقائق', 'The 10-minute cycle')}
           </h3>
           <span className="text-[12px] text-mute">
-            {L('الخط الأسود = دلوقتي', 'Dark line = now')} (<Mm ms={cyclePos} /> {L('من الدورة', 'into the cycle')})
+            {L('المتاجر اللي بتتفحص كل 10 دقائق · الخط الأسود = دلوقتي', 'Stores scanned every 10 minutes · dark line = now')} (<Mm ms={cyclePos} /> {L('من الدورة', 'into the cycle')})
           </span>
         </div>
         <div className="mt-4 flex flex-col gap-2.5">
-          {states.map((s) => {
-            const a = s.job.offsetMin / 10
-            const w = s.job.durationMin / 10
+          {states.filter((j) => j.intervalMin === 10).map((j) => {
+            const Icon = icons[j.category] ?? SprayCan
+            const last = lastRun(j)
+            const a = ((j.nextDueAt ?? 0) % CYCLE) / CYCLE
+            const w = Math.max(0.012, Math.min(1, last?.finished_at ? (last.finished_at - last.started_at) / CYCLE : 0.012))
             const segs = a + w > 1 ? [[a, 1 - a], [0, a + w - 1]] : [[a, w]]
             return (
-              <div key={s.job.id} className="grid grid-cols-[150px_1fr] items-center gap-3 @xl:grid-cols-[190px_1fr]">
+              <div key={j.id} className="grid grid-cols-[150px_1fr] items-center gap-3 @xl:grid-cols-[190px_1fr]">
                 <div className="flex items-center gap-2 truncate text-[12.5px] font-semibold">
-                  <s.job.icon className="size-4 shrink-0 text-body" />
-                  <span className="truncate">{tx(s.job.label)}</span>
-                  <SourceChip id={s.job.source} />
+                  <Icon className="size-4 shrink-0 text-body" />
+                  <span className="truncate">{label(j.category)}</span>
+                  <SourceChip id={j.source} />
                 </div>
                 <div className="relative h-6 rounded-md bg-canvas">
                   {segs.map(([st, wd], i) => (
-                    <div
-                      key={i}
-                      className={cx('absolute inset-y-1 rounded', s.running ? 'bg-ink' : 'bg-line-strong')}
-                      style={{ insetInlineStart: `${st * 100}%`, width: `${wd * 100}%` }}
-                    />
+                    <div key={i} className={cx('absolute inset-y-1 rounded', j.state === 'running' ? 'bg-ink' : 'bg-line-strong')} style={{ insetInlineStart: `${st * 100}%`, width: `${wd * 100}%` }} />
                   ))}
                   <div className="absolute inset-y-[-3px] w-0.5 rounded bg-ink" style={{ insetInlineStart: `${(cyclePos / CYCLE) * 100}%` }} />
                 </div>
@@ -290,7 +174,7 @@ export function Jobs() {
             <span className="h-2.5 w-4 rounded-sm bg-ink" /> {L('شغال دلوقتي', 'Running now')}
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-4 rounded-sm bg-line-strong" /> {L('ميعاد البحث في الدورة', 'Scheduled slot in the cycle')}
+            <span className="h-2.5 w-4 rounded-sm bg-line-strong" /> {L('ميعاد البحث ومدة آخر جولة', 'Slot and last round’s duration')}
           </span>
         </div>
       </section>
@@ -299,20 +183,15 @@ export function Jobs() {
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[12px] font-semibold text-mute">{L('المتجر', 'Store')}</span>
         <div className="no-scrollbar flex max-w-full overflow-x-auto rounded-lg border border-line bg-white p-0.5">
-          {([['all', L('كل المتاجر', 'All stores')], ...jobSources.map((x) => [x.id, x.label])] as ['all' | SourceId, string][]).map(([k, l]) => (
+          {([['all', L('كل المتاجر', 'All stores')], ...stores.map((x) => [x.id, x.label])] as ['all' | SourceId, string][]).map(([k, l]) => (
             <button
               key={k}
               onClick={() => setSource(k)}
               aria-pressed={source === k}
-              className={cx(
-                'h-8 rounded-md px-3 text-[12.5px] font-semibold whitespace-nowrap',
-                source === k ? 'bg-ink text-white' : 'text-body hover:text-ink',
-              )}
+              className={cx('h-8 rounded-md px-3 text-[12.5px] font-semibold whitespace-nowrap', source === k ? 'bg-ink text-white' : 'text-body hover:text-ink')}
             >
               <bdi>{l}</bdi>
-              <span className={cx('num ms-1.5 text-[11px]', source === k ? 'text-white/60' : 'text-mute')}>
-                {k === 'all' ? jobs.length : jobs.filter((j) => j.source === k).length}
-              </span>
+              <span className={cx('num ms-1.5 text-[11px]', source === k ? 'text-white/60' : 'text-mute')}>{k === 'all' ? all.length : all.filter((j) => j.source === k).length}</span>
             </button>
           ))}
         </div>
@@ -322,17 +201,14 @@ export function Jobs() {
           [
             ['all', L('كل الأقسام', 'All categories'), states.length],
             ['running', L('جاري الآن', 'Running now'), running.length],
-            ['waiting', L('خلصت ومستنية', 'Done & waiting'), waiting.length],
-            ['issues', L('آخر جولة فيها مشكلة', 'Last round had issues'), issues.length],
+            ['waiting', L('مستنية', 'Waiting'), waiting.length],
+            ['issues', L('فيها مشكلة', 'Has issues'), issues.length],
           ] as [Filter, string, number][]
         ).map(([k, l, n]) => (
           <button
             key={k}
             onClick={() => setFilter(k)}
-            className={cx(
-              'flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold',
-              filter === k ? 'border-ink bg-ink text-white' : 'border-line bg-white',
-            )}
+            className={cx('flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold', filter === k ? 'border-ink bg-ink text-white' : 'border-line bg-white')}
           >
             {l}
             <span className={cx('num text-[11.5px]', filter === k ? 'text-white/60' : 'text-mute')}>{n}</span>
@@ -341,13 +217,11 @@ export function Jobs() {
       </div>
 
       <section className="grid grid-cols-1 gap-4 @xl:grid-cols-2 @5xl:grid-cols-3">
-        {shown.map((s) => (
-          <JobCard key={s.job.id} s={s} t={t} />
+        {shown.map((j) => (
+          <JobCard key={j.id} j={j} t={t} label={label(j.category)} />
         ))}
         {!shown.length && (
-          <div className="col-span-full rounded-2xl border border-dashed border-line bg-white py-12 text-center text-[13px] text-body">
-            {L('مفيش أقسام في الحالة دي دلوقتي', 'No categories in this state right now')}
-          </div>
+          <div className="col-span-full rounded-2xl border border-dashed border-line bg-white py-12 text-center text-[13px] text-body">{L('مفيش أقسام في الحالة دي دلوقتي', 'No categories in this state right now')}</div>
         )}
       </section>
 
@@ -359,7 +233,6 @@ export function Jobs() {
             <tr className="[&>th]:px-4 [&>th]:py-2.5 [&>th]:text-start [&>th]:font-semibold">
               <th>{L('خلصت', 'Finished')}</th>
               <th>{L('القسم', 'Category')}</th>
-              <th className="hidden sm:table-cell">{L('المتجر', 'Store')}</th>
               <th>{L('الحالة', 'Status')}</th>
               <th className="hidden sm:table-cell">{L('الصفحات', 'Pages')}</th>
               <th>{L('العروض', 'Deals')}</th>
@@ -367,28 +240,20 @@ export function Jobs() {
             </tr>
           </thead>
           <tbody>
-            {log.map(({ job, r }) => (
-              <tr key={job.id + r.k} className="border-t border-line [&>td]:px-4 [&>td]:py-2.5">
-                <td className="num whitespace-nowrap">{clock(r.end)}</td>
+            {log.map((r) => (
+              <tr key={r.id} className="border-t border-line [&>td]:px-4 [&>td]:py-2.5">
+                <td className="num whitespace-nowrap">{r.finished_at ? clock(r.finished_at) : '—'}</td>
                 <td className="font-semibold">
-                  {tx(job.label)}
-                  <span className="ms-1.5 sm:hidden">
-                    <SourceChip id={job.source} />
-                  </span>
-                </td>
-                <td className="hidden sm:table-cell">
-                  <SourceChip id={job.source} />
+                  {label(r.category)} <SourceChip id={r.source} />
                 </td>
                 <td>
                   <RoundBadge s={r.status} />
                 </td>
                 <td className="num hidden sm:table-cell">
-                  {r.pagesRead} <span className="text-mute">/ {job.pages}</span>
+                  {r.pages_ok} <span className="text-mute">/ {r.pages_planned}</span>
                 </td>
-                <td className="num font-semibold">{r.deals}</td>
-                <td className="hidden text-[12.5px] text-body md:table-cell">
-                  {r.error ? tx(r.error) : r.status === 'partial' ? L('بعض الصفحات ما اتقراتش', 'Some pages were not read') : ''}
-                </td>
+                <td className="num font-semibold">{r.offers_found}</td>
+                <td className="hidden text-[12.5px] text-body md:table-cell" title={r.error ?? undefined}>{runError(r.error)}</td>
               </tr>
             ))}
           </tbody>
@@ -398,127 +263,108 @@ export function Jobs() {
   )
 }
 
-function JobCard({ s, t }: { s: JobState; t: number }) {
-  const { job, running, last } = s
+function JobCard({ j, t, label }: { j: JobView; t: number; label: string }) {
+  const Icon = icons[j.category] ?? SprayCan
+  const current = j.state === 'running' ? j.runs.find((r) => r.status === 'running') : undefined
+  const last = lastRun(j)
+  const history = finished(j)
+  const rate = history.length ? Math.round((history.filter((r) => r.status === 'success').length / history.length) * 100) : 0
+  const next = j.nextDueAt ?? 0
   return (
-    <article className={cx('flex flex-col rounded-2xl border bg-white p-4', running ? 'border-ink' : 'border-line')}>
+    <article className={cx('flex flex-col rounded-2xl border bg-white p-4', j.state === 'running' ? 'border-ink' : 'border-line')}>
       <div className="flex items-center gap-3">
-        <div className={cx('grid size-10 place-items-center rounded-xl', running ? 'bg-ink text-white' : 'bg-canvas text-ink')}>
-          <job.icon className="size-5" />
+        <div className={cx('grid size-10 place-items-center rounded-xl', j.state === 'running' ? 'bg-ink text-white' : 'bg-canvas text-ink')}>
+          <Icon className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[15px] font-bold">{tx(job.label)}</h3>
+          <h3 className="truncate text-[15px] font-bold">{label}</h3>
           <div className="text-[11.5px] text-mute">
-            <span dir="ltr">{sourceLabel(job.source)}</span> · {L('كل 10 دقائق', 'every 10 min')} · {job.pages} {L('صفحة', 'pages')}
+            <span dir="ltr">{store(j.source).label}</span> · {L(`كل ${j.intervalMin} دقيقة`, `every ${j.intervalMin} min`)}
           </div>
         </div>
-        {running ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 text-[12px] font-semibold text-white">
+        {j.state === 'running' ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-ink px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap text-white">
             <Loader2 className="size-3.5 animate-spin" /> {L('جاري البحث', 'Searching')}
           </span>
+        ) : j.overdue ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-fail-soft px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap text-fail">
+            <Timer className="size-3.5" /> {L('متأخرة', 'Overdue')}
+          </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-canvas px-2 py-0.5 text-[12px] font-semibold text-body">
-            <Timer className="size-3.5" /> {L('مستنية', 'Waiting')}
+          <span className="inline-flex items-center gap-1 rounded-full bg-canvas px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap text-body">
+            <Timer className="size-3.5" /> {j.state === 'queued' ? L('في الطابور', 'Queued') : L('مستنية', 'Waiting')}
           </span>
         )}
       </div>
 
       <div className="mt-4 rounded-xl bg-canvas/80 p-3.5">
-        {running ? (
+        {current ? (
           <>
             <div className="flex items-baseline justify-between text-[12.5px]">
               <span className="text-body">
-                {L('صفحة', 'Page')} <b className="num text-ink">{running.pages}</b> {L('من', 'of')}{' '}
-                <span className="num">{job.pages}</span>
+                {L('صفحات اتقرت', 'Pages read')} <b className="num text-ink">{current.pages_ok}</b>
               </span>
               <span className="text-mute">
-                {L('بدأت من', 'started')} <Mm ms={t - running.round.start} /> {L('', 'ago')}
+                {L('بدأت من', 'started')} <Mm ms={t - current.started_at} /> {L('', 'ago')}
               </span>
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
-              <div
-                className="h-full rounded-full bg-ink transition-[width] duration-300"
-                style={{ width: `${Math.min(100, (running.pages / job.pages) * 100)}%` }}
-              />
-            </div>
             <div className="mt-2 text-[11.5px] text-mute">
-              {L('الجولة رقم', 'Round #')}
-              <span className="num">{running.round.k}</span> · {L('الجولة الجاية الساعة', 'next round at')} {clock(s.nextStart)}
+              <span className="num">{current.products_read}</span> {L('منتج لحد دلوقتي', 'products so far')} · {L('الجولة الجاية الساعة', 'next round at')} {clock(next)}
             </div>
           </>
         ) : (
           <>
             <div className="text-[12px] text-body">{L('الجولة الجاية تبدأ بعد', 'Next round starts in')}</div>
-            <Mm ms={s.nextStart - t} className="text-[28px] leading-9 font-bold tracking-tight" />
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white">
-              <div
-                className="h-full rounded-full bg-drop"
-                style={{ width: `${Math.min(100, ((t - last.end) / (s.nextStart - last.end)) * 100)}%` }}
-              />
-            </div>
+            <Mm ms={next - t} className="text-[28px] leading-9 font-bold tracking-tight" />
             <div className="mt-2 text-[11.5px] text-mute">
-              {L('آخر جولة خلصت الساعة', 'Last round finished at')} {clock(last.end)}
+              {last?.finished_at ? (
+                <>
+                  {L('آخر جولة خلصت الساعة', 'Last round finished at')} {clock(last.finished_at)}
+                </>
+              ) : (
+                L('لسه ما خلصتش أي جولة', 'No round finished yet')
+              )}
             </div>
           </>
         )}
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-        <Mini label={L('آخر جولة', 'Last round')} value={<RoundBadge s={last.status} />} />
-        <Mini label={L('منتجات اتقرت', 'Products read')} value={<span className="num font-bold">{last.products}</span>} />
-        <Mini label={L('عروض لقيناها', 'Deals found')} value={<span className="num font-bold text-drop">{last.deals}</span>} />
-      </div>
-
-      {last.status === 'failed' && (
-        <div className="mt-3 rounded-lg bg-fail-soft px-3 py-2 text-[12px] leading-5 text-fail">
-          {tx(last.error!)}.{' '}
-          {L('آخر عروض ناجحة لسه ظاهرة، وهنحاول تاني في الجولة الجاية.', "Last successful deals stay visible; we'll retry next round.")}
-        </div>
-      )}
-      {last.status === 'partial' && (
-        <div className="mt-3 rounded-lg bg-adv-soft px-3 py-2 text-[12px] leading-5 text-body">
-          {L('اتقرا', 'Read')} <span className="num">{last.pagesRead}</span> {L('من', 'of')}{' '}
-          <span className="num">{job.pages}</span>{' '}
-          {L('صفحة بس — الباقي بآخر سعر ناجح.', 'pages only — the rest keep their last successful price.')}
+      {last && (
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+          <Mini label={L('آخر جولة', 'Last round')} value={<RoundBadge s={last.status} />} />
+          <Mini label={L('منتجات اتقرت', 'Products read')} value={<span className="num font-bold">{last.products_read}</span>} />
+          <Mini label={L('عروض لقيناها', 'Deals found')} value={<span className="num font-bold text-drop">{last.offers_found}</span>} />
         </div>
       )}
 
-      <div className="mt-auto pt-4">
-        <div className="flex items-center justify-between text-[11px] text-mute">
-          <span>{L('آخر 8 جولات', 'Last 8 rounds')}</span>
-          <span className="flex items-center gap-1">
-            <Gauge className="size-3.5" />
-            {Math.round((s.history.filter((r) => r.status === 'success').length / s.history.length) * 100)}% {L('نجاح', 'success')}
-          </span>
+      {last && last.status !== 'success' && last.error && (
+        <div className={cx('mt-3 rounded-lg px-3 py-2 text-[12px] leading-5', last.status === 'failed' ? 'bg-fail-soft text-fail' : 'bg-adv-soft text-body')} title={last.error}>
+          {runError(last.error)}
         </div>
-        <div className="mt-1.5 flex gap-1">
-          {[...s.history].reverse().map((r) => (
-            <div
-              key={r.k}
-              title={`${clock(r.end)} — ${roundMeta()[r.status].label} · ${r.deals} ${L('عرض', 'deals')}`}
-              className={cx('h-2 flex-1 rounded-full', roundMeta()[r.status].bar)}
-            />
-          ))}
+      )}
+      {j.overlaps > 0 && (
+        <div className="mt-2 text-[11.5px] text-mute">
+          {L('جولات اتخطت لأن اللي قبلها كانت لسه شغالة:', 'Rounds skipped because the previous one was still running:')} <span className="num">{j.overlaps}</span>
         </div>
-      </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="mt-auto pt-4">
+          <div className="flex items-center justify-between text-[11px] text-mute">
+            <span>{L(`آخر ${history.length} جولات`, `Last ${history.length} rounds`)}</span>
+            <span className="flex items-center gap-1">
+              <Gauge className="size-3.5" />
+              {rate}% {L('نجاح', 'success')}
+            </span>
+          </div>
+          <div className="mt-1.5 flex gap-1">
+            {[...history].reverse().map((r) => (
+              <div key={r.id} title={`${r.finished_at ? clock(r.finished_at) : ''} — ${roundMeta()[r.status].label} · ${r.offers_found} ${L('عرض', 'deals')}`} className={cx('h-2 flex-1 rounded-full', roundMeta()[r.status].bar)} />
+            ))}
+          </div>
+        </div>
+      )}
     </article>
-  )
-}
-
-function SourceChip({ id }: { id: SourceId }) {
-  return (
-    <span
-      className={cx(
-        'inline-flex shrink-0 items-center rounded px-1.5 py-px text-[10.5px] font-semibold',
-        id === 'noon'
-          ? 'bg-noon-soft text-noon-ink'
-          : id === 'emarati'
-            ? 'bg-emarati-soft text-emarati-ink'
-            : 'bg-adv-soft text-adv',
-      )}
-    >
-      {tx(jobSources.find((x) => x.id === id)!.short)}
-    </span>
   )
 }
 
@@ -538,9 +384,7 @@ function Kpi({ label, value, sub, dot, ltr }: { label: string; value: string; su
         {dot && <span className={cx('size-2 rounded-full', dot)} />}
         {label}
       </div>
-      <div className="num mt-1 text-[30px] leading-9 font-bold tracking-tight">
-        {ltr ? <bdi dir="ltr">{value}</bdi> : value}
-      </div>
+      <div className="num mt-1 text-[30px] leading-9 font-bold tracking-tight">{ltr ? <bdi dir="ltr">{value}</bdi> : value}</div>
       <div className="mt-0.5 truncate text-[11.5px] leading-4 text-mute">{sub}</div>
     </div>
   )

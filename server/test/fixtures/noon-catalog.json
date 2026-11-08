@@ -1,0 +1,5 @@
+{"page":1,"nbPages":3,"hits":[
+ {"sku":"N1234","name":"Samsung Galaxy A55 256GB","brand":"Samsung","url":"galaxy-a55","price":20999,"sale_price":9499,"image_key":"v1/a55","is_buyable":true},
+ {"sku":"N5678","name":"Juhayna Milk 6 x 1 L","brand":"Juhayna","url":"juhayna-milk","price":240,"sale_price":null,"is_buyable":true,"nudges":[{"text":"Buy 2 save 10%"}]},
+ {"sku":"N0000","name":"Broken item"}
+]}

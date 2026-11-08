@@ -1,0 +1,248 @@
+import { amazonPostingOff, evidence as E, ownChannel, publication as P, type Channel } from './config.ts'
+import { json, type DB } from './db.ts'
+import { analyze, type Basis } from './evaluate.ts'
+import { HISTORY_WINDOW_MS } from './pipeline.ts'
+import { decide, EXISTING_OFFER, minPctFor } from './policy.ts'
+import type { Attempt, DeliveryRow, OfferRow, ProductRow, Repo } from './repo.ts'
+import type { SourceAdapter } from './sources/types.ts'
+import { BACKFILL_REASON } from './backfill.ts'
+import { amazonPaused } from './riskWatch.ts'
+import { parsePack } from './units.ts'
+import { renderMessage, type Sender } from './telegram.ts'
+import type { SourceId } from './config.ts'
+import { FetchError } from './sources/types.ts'
+
+/**
+ * Delivery worker (brief §15–§17). On each tick it takes due deliveries and:
+ *  - for a delayed general post: rechecks the offer first, then publishes, updates or cancels
+ *  - sends, retries temporary failures with backoff, and keeps every attempt as history
+ */
+export type PublisherDeps = {
+  db: DB
+  repo: Repo
+  adapters: Record<SourceId, SourceAdapter>
+  send: Sender
+  now: () => number
+  /** Gap between sends, so the bot stays under Telegram's limits. Default none. */
+  sendGapMs?: number
+  /** The public channel's pace. Default none. */
+  generalGapMs?: number
+  /** A public post that waits this long is dropped. Default never. */
+  generalDropAfterMs?: number
+  /** Screenshot of the offer on the store page. Null or a failure falls back to the product image. */
+  capture?: (channel: Channel, source: SourceId, url: string, price: number) => Promise<Buffer | null>
+}
+
+type Due = DeliveryRow & { offer_priority: number; offer_pct: number }
+
+export function createPublisher(deps: PublisherDeps) {
+  const { db, repo } = deps
+  const dueQ = db.prepare(`SELECT d.*, o.priority AS offer_priority, o.pct AS offer_pct FROM deliveries d JOIN offers o ON o.id = d.offer_id
+    WHERE (d.state = 'scheduled' AND d.scheduled_at <= ?) OR (d.state = 'retrying' AND d.next_attempt_at <= ?)
+    ORDER BY (o.reason LIKE '%${EXISTING_OFFER}' AND d.channel != 'general') ASC, d.channel = 'priority' DESC, o.pct DESC, d.scheduled_at LIMIT 300`)
+  const lastGeneral = db.prepare(`SELECT MAX(sent_at) t FROM deliveries WHERE channel = 'general' AND state = 'sent' AND dry_run = 0`)
+  const staleGeneral = db.prepare(`SELECT id, offer_id FROM deliveries WHERE channel = 'general' AND state = 'scheduled' AND scheduled_at < ?`)
+  const dropGeneral = db.prepare(`UPDATE deliveries SET state = 'cancelled', cancel_reason = 'Dropped: stronger offers took the slot', next_attempt_at = NULL WHERE id = ?`)
+  const markDropped = db.prepare(`UPDATE offers SET status = 'dropped' WHERE id = ? AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.offer_id = offers.id AND d.state IN ('sent', 'scheduled', 'retrying', 'sending'))`)
+  const offerQ = db.prepare('SELECT * FROM offers WHERE id = ?')
+  const setState = db.prepare(
+    'UPDATE deliveries SET state = ?, attempts = ?, next_attempt_at = ?, sent_at = ?, message_id = ?, dry_run = ?, cancel_reason = ?, posted_price = ? WHERE id = ?',
+  )
+  const offerDeliveries = db.prepare('SELECT state FROM deliveries WHERE offer_id = ?')
+  const setOfferStatus = db.prepare('UPDATE offers SET status = ? WHERE id = ?')
+  const verifyOffer = db.prepare('UPDATE offers SET verified_at = ? WHERE id = ? AND verified_at IS NULL')
+  let busy = false
+  let pausedUntil = 0
+
+  function save(d: DeliveryRow) {
+    setState.run(d.state, d.attempts, d.next_attempt_at, d.sent_at, d.message_id, d.dry_run, d.cancel_reason, d.posted_price, d.id)
+    const states = (offerDeliveries.all(d.offer_id) as { state: string }[]).map((r) => r.state)
+    const status = states.includes('sent')
+      ? 'published'
+      : states.every((s) => s === 'cancelled' || s === 'failed')
+        ? 'cancelled'
+        : 'scheduled'
+    setOfferStatus.run(status, d.offer_id)
+  }
+
+  /** Targeted recheck before a delayed general post (brief §16). Returns the action to take. */
+  async function recheck(d: Due, offer: OfferRow, p: ProductRow, now: number): Promise<{ cancel?: string; retry?: boolean; price?: number }> {
+    const attempts = json<Attempt[]>(d.attempts, [])
+    let fresh
+    try {
+      fresh = await deps.adapters[p.source].product(p.store_key, p.url)
+    } catch (e) {
+      const reason = e instanceof FetchError ? e.message : String(e)
+      repo.recordFailure(p.id, now, null, `recheck: ${reason}`)
+      const failedRechecks = attempts.filter((a) => a.recheck && !a.ok).length + 1
+      d.attempts = JSON.stringify([...attempts, { at: now, ok: false, recheck: true, error: `Recheck failed: ${reason}` }])
+      if (failedRechecks < 2) return { retry: true }
+      return P.onFailedRecheck === 'cancel' ? { cancel: 'Could not recheck the price before publishing' } : {}
+    }
+    if (!fresh || fresh.available === false) {
+      if (fresh) repo.recordObservation(p.id, fresh, now, null)
+      return { cancel: 'Product became unavailable before the general slot' }
+    }
+    repo.recordObservation(p.id, fresh, now, null)
+    // A product page can omit the crossed-out price that the listing shows, so fall back to the last one read.
+    const a = analyze(repo.history(p.id, now - HISTORY_WINDOW_MS), fresh.listPrice ?? p.list_price ?? undefined)
+    // Judge the deal on its own, ignoring this pending post (lastPost undefined).
+    const again = decide(a, { now, available: true })
+    if (!again.publish) {
+      const back = fresh.price >= offer.price * (1 + E.samePriceBandPct / 100)
+      return { cancel: back ? `Price went back to EGP ${Math.round(fresh.price).toLocaleString('en-US')} before the general slot` : `No longer qualifies: ${again.reason}` }
+    }
+    if (offer.labels.includes('exceptional') && Math.abs(fresh.price - offer.price) / offer.price <= E.samePriceBandPct / 100) verifyOffer.run(now, offer.id)
+    return { price: fresh.price }
+  }
+
+  async function handle(d: Due, now: number) {
+    let offer = offerQ.get(d.offer_id) as OfferRow
+    const p = repo.product(offer.product_id)!
+    const attempts = () => json<Attempt[]>(d.attempts, [])
+    let price = d.posted_price ?? offer.price
+
+    // Held, not cancelled: it goes out, rechecked, once Amazon is back on.
+    if (p.source === 'amazon' && amazonPaused()) return
+
+    if (amazonPostingOff && p.source === 'amazon' && d.state === 'scheduled') {
+      d.state = 'cancelled'
+      d.cancel_reason = 'Amazon posting is switched off'
+      d.next_attempt_at = null
+      save(d)
+      return
+    }
+
+    // A category with its own channel never posts anywhere else, even if it was queued before the rule.
+    const own = ownChannel(p.category)
+    if (own && d.channel !== own && d.state === 'scheduled') {
+      d.state = 'cancelled'
+      d.cancel_reason = `This category posts only to the ${own} channel`
+      d.next_attempt_at = null
+      save(d)
+      return
+    }
+
+    // Recheck after the priority delay, and for any post that waited in the queue behind the hourly cap,
+    // because a queued price can be hours old by the time its turn comes.
+    const waited = now - offer.detected_at > P.maxAgeAtPublishMs
+    const backfill = offer.reason.startsWith(BACKFILL_REASON)
+    const existing = offer.reason.endsWith(EXISTING_OFFER)
+    const delayed = backfill || existing || (d.channel !== 'priority' && (offer.priority === 1 || waited))
+    if (delayed && !attempts().some((a) => a.recheck && a.ok)) {
+      const r = await recheck(d, offer, p, now)
+      if (r.retry) {
+        d.state = 'scheduled'
+        d.scheduled_at = now + P.recheckRetryMs
+        db.prepare('UPDATE deliveries SET scheduled_at = ? WHERE id = ?').run(d.scheduled_at, d.id)
+        save(d)
+        return
+      }
+      if (r.cancel) {
+        d.state = 'cancelled'
+        d.cancel_reason = r.cancel
+        d.next_attempt_at = null
+        save(d)
+        return
+      }
+      if (r.price) price = r.price
+      offer = offerQ.get(d.offer_id) as OfferRow // may now be verified
+      d.attempts = JSON.stringify([...attempts(), { at: now, ok: true, recheck: true }])
+    }
+
+    // The price may have moved since the decision. Never post a discount under the minimum for its basis.
+    const shownPct = offer.ref_price ? ((offer.ref_price - price) / offer.ref_price) * 100 : offer.pct
+    const minPct = backfill ? Number(offer.reason.match(/\(min (\d+)%\)/)?.[1] ?? P.backfillMinPct) : minPctFor[offer.basis as Basis]
+    const minShown = Math.max(minPct, existing ? P.existingMinPct : 0, d.channel === 'general' ? P.generalMinPct : 0)
+    if (shownPct < minShown) {
+      d.state = 'cancelled'
+      d.cancel_reason = `Discount is now ${Math.round(shownPct)}%, under the ${minShown}% minimum`
+      d.next_attempt_at = null
+      save(d)
+      return
+    }
+
+    d.state = 'sending'
+    save(d)
+    const a = analyze(repo.history(p.id, now - HISTORY_WINDOW_MS), p.list_price ?? undefined)
+    const seen = repo.history(p.id, 0)
+    const band = E.samePriceBandPct / 100
+    const tracked = {
+      readings: seen.length,
+      days: seen.length ? (now - seen[0].t) / 86_400_000 : 0,
+      stable: seen.every((o) => Math.abs(o.price - price) / price <= band),
+      atLowest: seen.every((o) => price <= o.price),
+      lowest: seen.reduce((low, o) => Math.min(low, o.price), price),
+    }
+    const msg = renderMessage({
+      tracked,
+      key: p.id,
+      name: p.name,
+      category: p.category,
+      sufficient: a.sufficient,
+      lowestSeen: a.lowest.price >= a.current.price,
+      source: p.source,
+      price,
+      refPrice: offer.ref_price ?? undefined,
+      basis: offer.basis as 'observed',
+      pct: shownPct,
+      promos: repo.promos(p),
+      exceptional: offer.labels.includes('exceptional') && !offer.verified_at,
+      checkedAt: p.last_seen_at ?? a.current.t,
+      url: p.url,
+      image: p.image ?? undefined,
+      pack: parsePack(`${p.name} ${p.variant ?? ''}`),
+    })
+    const shot = await deps.capture?.(d.channel, p.source, p.url, price).catch(() => null)
+    const res = await deps.send(d.channel, msg.html, shot ?? p.image ?? undefined, msg.button)
+    const t = deps.now()
+    const sendAttempts = attempts().filter((x) => !x.recheck)
+    if (res.ok) {
+      Object.assign(d, { state: 'sent', sent_at: t, message_id: res.messageId, dry_run: res.dryRun ? 1 : 0, next_attempt_at: null, posted_price: price })
+      d.attempts = JSON.stringify([...attempts(), { at: t, ok: true }])
+    } else {
+      d.attempts = JSON.stringify([...attempts(), { at: t, ok: false, error: res.error }])
+      const tries = sendAttempts.length + 1
+      if (res.retryable && tries <= P.retryBackoffMs.length) {
+        d.state = 'retrying'
+        d.next_attempt_at = t + Math.max(res.retryAfterMs ?? 0, P.retryBackoffMs[tries - 1])
+        if (res.retryAfterMs) pausedUntil = t + res.retryAfterMs // Telegram asked us to wait, so stop sending altogether
+      } else {
+        d.state = 'failed'
+        d.next_attempt_at = null
+      }
+    }
+    save(d)
+  }
+
+  return {
+    /** Process everything that is due. Safe to call often; it never overlaps itself. */
+    async tick() {
+      if (busy) return
+      busy = true
+      try {
+        // Pick the next one each time, so a fresh offer goes ahead of a long backlog that is still draining.
+        const handled = new Set<number>()
+        for (;;) {
+          const now = deps.now()
+          if (now < pausedUntil) break
+          // Inside the public channel's gap its posts wait, and the ones left too long are dropped so nothing goes out late.
+          if (deps.generalDropAfterMs) {
+            for (const x of staleGeneral.all(now - deps.generalDropAfterMs) as { id: number; offer_id: number }[]) {
+              dropGeneral.run(x.id)
+              markDropped.run(x.offer_id)
+            }
+          }
+          const gapOpen = !deps.generalGapMs || now - ((lastGeneral.get() as { t: number | null }).t ?? 0) >= deps.generalGapMs
+          const next = (dueQ.all(now, now) as Due[]).find((x) => !handled.has(x.id) && (gapOpen || x.channel !== 'general'))
+          if (!next) break
+          handled.add(next.id)
+          await handle(next, now)
+          if (deps.sendGapMs) await new Promise((r) => setTimeout(r, deps.sendGapMs))
+        }
+      } finally {
+        busy = false
+      }
+    },
+  }
+}

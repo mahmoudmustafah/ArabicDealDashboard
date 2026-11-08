@@ -1,7 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Obs } from './data'
-import { DAY, NOW } from './data'
-import { dateTime, price, shortDate } from './format'
+import type { Obs } from './api'
+import { DAY, dateTime, price, shortDate } from './format'
 import { L, isAr } from './i18n'
 
 type Props = { history: Obs[]; fromT: number; median?: number; lowest?: number; listPrice?: number }
@@ -23,7 +22,7 @@ export function PriceChart({ history, fromT, median, lowest }: Props) {
   const H = 220
   const pad = { l: 8, r: 58, t: 16, b: 28 }
   const x0 = Math.min(fromT, pts[0]?.t ?? fromT)
-  const x1 = NOW
+  const x1 = Math.max(Date.now(), (pts[pts.length - 1]?.t ?? 0) + 1)
   const prices = pts.map((p) => p.price).concat(median ? [median] : [])
   let lo = Math.min(...prices)
   let hi = Math.max(...prices)
@@ -151,6 +150,7 @@ export function PriceChart({ history, fromT, median, lowest }: Props) {
 }
 
 export function Sparkline({ history, w = 96, h = 28 }: { history: Obs[]; w?: number; h?: number }) {
+  const NOW = Date.now()
   const pts = history.filter((o) => o.t >= NOW - 30 * DAY)
   if (pts.length < 2) return <div style={{ width: w, height: h }} className="flex items-center text-[11px] text-mute">—</div>
   const lo = Math.min(...pts.map((p) => p.price))
