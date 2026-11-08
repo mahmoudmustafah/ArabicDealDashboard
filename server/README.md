@@ -78,4 +78,4 @@ The risk guard stops Amazon posts and the tag by itself if Amazon blocks over 85
 
 `EMARATI_SCAN=off` in `server/.env`, then a restart, stops scanning Emarati Scents.
 
-Put the channel logo at `assets/logo.png` in the repo root (a transparent PNG is best). Screenshots show it bottom left, and skip it if the file is missing.
+Screenshots show the channel logo from `assets/logo.png` or `assets/logo.jpg` in the repo root. To restore it: `base64 -D -i server/assets/logo.jpg.b64 -o assets/logo.jpg`. It goes bottom left, moves to bottom right if that would cover the price or buy box, and is skipped if the file is missing.

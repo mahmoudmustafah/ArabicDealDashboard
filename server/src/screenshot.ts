@@ -24,6 +24,8 @@ type StoreView = {
   close?: string
   /** Boxes to mark in red, so the deal stands out. */
   highlight?: string[]
+  /** Parts of the page the logo must not cover. */
+  keepClear?: string[]
 }
 
 const stores: Record<SourceId, StoreView> = {
@@ -32,6 +34,7 @@ const stores: Record<SourceId, StoreView> = {
     price: '#corePriceDisplay_desktop_feature_div .a-price, #corePrice_feature_div .a-price',
     start: '#ppd',
     highlight: ['#corePriceDisplay_desktop_feature_div', '#offerDisplayFeatures_desktop'],
+    keepClear: ['#desktop_buybox', '#buybox'],
   },
   noon: {
     localize: (u) => u.replace('/egypt-en/', '/egypt-ar/'),
@@ -57,16 +60,32 @@ export function priceMatches(text: string | null | undefined, expected: number) 
   return seen !== undefined && Math.abs(seen - expected) / expected <= PRICE_TOLERANCE
 }
 
-const LOGO = process.env.CHANNEL_LOGO ?? '../assets/logo.png'
-const logoDataUrl = () => (existsSync(LOGO) ? `data:image/png;base64,${readFileSync(LOGO).toString('base64')}` : null)
+const LOGOS = [process.env.CHANNEL_LOGO, '../assets/logo.png', '../assets/logo.jpg'].filter((x): x is string => !!x)
+function logoDataUrl() {
+  const file = LOGOS.find((f) => existsSync(f))
+  return file ? `data:image/${file.endsWith('.png') ? 'png' : 'jpeg'};base64,${readFileSync(file).toString('base64')}` : null
+}
 
-function overlayScript(o: { boxes: { x: number; y: number; width: number; height: number }[]; frame: { top: number; width: number; height: number }; logo: string | null }) {
+const LOGO_SHARE = 0.13
+const LOGO_MARGIN = 24
+type Box = { x: number; y: number; width: number; height: number }
+const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+
+/** Bottom left like a stamp, unless that covers the price, a red box or the buy box. Then bottom right, or nowhere. */
+export function logoSpot(frame: { top: number; width: number; height: number }, avoid: Box[]) {
+  const size = frame.width * LOGO_SHARE
+  const y = frame.top + frame.height - size - LOGO_MARGIN
+  const spots = [LOGO_MARGIN, frame.width - size - LOGO_MARGIN].map((x) => ({ x, y, width: size, height: size }))
+  return spots.find((spot) => !avoid.some((b) => overlaps(spot, b)))
+}
+
+function overlayScript(o: { boxes: Box[]; frame: { top: number; width: number; height: number }; logo: string | null; spot?: Box }) {
   return `(() => {
     const o = ${JSON.stringify(o)}
     const add = (css, el = document.createElement('div')) => { el.style.cssText = 'position:absolute;pointer-events:none;z-index:2147483647;box-sizing:border-box;' + css; document.body.appendChild(el); return el }
     for (const b of o.boxes) add('left:' + (b.x - 6) + 'px;top:' + (b.y + scrollY - 6) + 'px;width:' + (b.width + 12) + 'px;height:' + (b.height + 12) + 'px;border:4px solid #e3242b;border-radius:6px')
     add('left:0;top:' + o.frame.top + 'px;width:' + o.frame.width + 'px;height:' + o.frame.height + 'px;border:8px solid transparent;border-image:linear-gradient(90deg,#3cc5f4,#8d7bf6,#f26cae) 1')
-    if (o.logo) { const img = document.createElement('img'); img.src = o.logo; add('left:24px;top:' + (o.frame.top + o.frame.height - o.frame.width * 0.12 - 24) + 'px;width:' + o.frame.width * 0.12 + 'px;height:auto', img) }
+    if (o.logo && o.spot) { const img = document.createElement('img'); img.src = o.logo; add('left:' + o.spot.x + 'px;top:' + o.spot.y + 'px;width:' + o.spot.width + 'px;height:' + o.spot.height + 'px;border:3px solid #fff;border-radius:14px;box-shadow:0 2px 10px rgba(0,0,0,.35)', img) }
   })()`
 }
 
@@ -107,10 +126,13 @@ async function capture(page: Page, source: SourceId, url: string, expected: numb
     const box = await page.locator(sel).first().boundingBox({ timeout: 1000 }).catch(() => null)
     if (box && box.width > 0 && box.height > 0 && box.y < top + height) boxes.push(box)
   }
-  const logo = logoDataUrl()
-  await page.evaluate(
-    overlayScript({ boxes, frame: { top, width: VIEW.width, height }, logo }),
-  )
+  const frame = { top, width: VIEW.width, height }
+  const keepClear = [...boxes, priceBox]
+  for (const sel of s.keepClear ?? []) {
+    const box = await page.locator(sel).first().boundingBox({ timeout: 1000 }).catch(() => null)
+    if (box) keepClear.push(box)
+  }
+  await page.evaluate(overlayScript({ boxes, frame, logo: logoDataUrl(), spot: logoSpot(frame, keepClear) }))
   return page.screenshot({ type: 'jpeg', quality: 80, fullPage: true, clip: { x: 0, y: top, width: VIEW.width, height } })
 }
 

@@ -5,7 +5,7 @@ import { jobs } from '../src/config.ts'
 import { amazonAdapter, parseAmazonProduct, parseAmazonSearch } from '../src/sources/amazon.ts'
 import { emaratiAdapter, parseShopifyCollection } from '../src/sources/emarati.ts'
 import { noonAdapter, parseNoonCatalog } from '../src/sources/noon.ts'
-import { priceMatches } from '../src/screenshot.ts'
+import { logoSpot, priceMatches } from '../src/screenshot.ts'
 import { FetchError } from '../src/sources/types.ts'
 
 const fx = (f: string) => readFileSync(new URL(`./fixtures/${f}`, import.meta.url), 'utf8')
@@ -127,4 +127,12 @@ test('a screenshot must show the price we are posting', () => {
 test('amazon product: CSS inside a coupon badge is not read as text', () => {
   const html = '<html><body><span id="productTitle">Remote</span><div id="corePrice_feature_div"><span class="a-price"><span class="a-offscreen">EGP 450.00</span></span></div><div id="couponBadgeRegularVpc"><style>.newCouponBadge { color: black; }</style>Save 10% coupon</div></body></html>'
   assert.equal(parseAmazonProduct(html, 'B0GHRV41HB')?.promos?.[0].text, 'Save 10% coupon')
+})
+
+test('the logo stamp goes bottom left, moves right to stay clear, and stays off if neither fits', () => {
+  const frame = { top: 0, width: 1000, height: 800 }
+  assert.equal(logoSpot(frame, [])?.x, 24)
+  const buyBox = { x: 0, y: 200, width: 300, height: 600 }
+  assert.ok(logoSpot(frame, [buyBox])!.x > 800)
+  assert.equal(logoSpot(frame, [buyBox, { x: 700, y: 200, width: 300, height: 600 }]), undefined)
 })
