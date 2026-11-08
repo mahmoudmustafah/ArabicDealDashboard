@@ -28,6 +28,8 @@ export function evaluateAndSchedule(db: DB, repo: Repo, productId: number, now: 
   const fresh = isNewOffer(a, p.discovered_at)
   if (amazonPostingOff && p.source === 'amazon') return { analysis: a, decision: { ...verdict, publish: false, reason: 'Amazon posting is switched off' } }
   const d: Decision = verdict.publish && !fresh && verdict.pct < P.existingMinPct ? { ...verdict, publish: false, reason: `Older offer under ${P.existingMinPct}%` } : verdict
+  const own = ownChannel(p.category)
+  if (d.publish && !own && !d.priority && d.pct < P.generalMinPct) return { analysis: a, decision: { ...d, publish: false, reason: `Under the public channel's ${P.generalMinPct}%` } }
 
   if (!d.publish) {
     if (a.best && d.reason !== 'Already scheduled for publication' && repo.shouldLogSkip(productId, a.current.price, d.reason)) {
@@ -48,7 +50,6 @@ export function evaluateAndSchedule(db: DB, repo: Repo, productId: number, now: 
     return { analysis: a, decision: d }
   }
 
-  const own = ownChannel(p.category)
   db.exec('BEGIN')
   try {
     const offerId = repo.insertOffer({

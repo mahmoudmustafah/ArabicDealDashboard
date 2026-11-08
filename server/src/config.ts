@@ -162,6 +162,10 @@ export const publication = {
   /** Offers whose discount was already there before these times count as backlog: they post, but after fresh ones. */
   changedSince: Date.parse(process.env.PUBLISH_CHANGED_SINCE ?? '') || 0,
   discoveredSince: Date.parse(process.env.PUBLISH_DISCOVERED_SINCE ?? '') || 0,
+  /** The public channel only: nothing under this, at most one post per gap, and offers that wait too long are dropped, not queued. Mayar's decision (2026-11-08). */
+  generalMinPct: 15,
+  generalGapMs: 6 * 60_000,
+  generalDropAfterMs: 10 * 60_000,
   /** Older offers post only from this discount. New ones post from 5%. Mayar's decision (2026-11-06), can be lowered later. */
   existingMinPct: 15,
   /** A backfilled post is skipped if its discount is now under this. */

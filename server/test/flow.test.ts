@@ -8,6 +8,7 @@ import { repo as makeRepo } from '../src/repo.ts'
 import { runJob } from '../src/scanner.ts'
 import { scheduleBackfill } from '../src/backfill.ts'
 import { publication } from '../src/config.ts'
+import { pickTopDeals, renderTopDeals } from '../src/dailyTop.ts'
 import { amazonPaused, amazonRisks, blocksSustained, createRiskWatch, setAmazonPaused } from '../src/riskWatch.ts'
 import { evaluateAndSchedule } from '../src/pipeline.ts'
 import { createScheduler } from '../src/scheduler.ts'
@@ -297,7 +298,7 @@ test('a delayed post is cancelled if the price moved and the shown discount fell
   await w.publisher.tick()
   const general = w.deliveries().find((d) => d.channel === 'general')!
   assert.equal(general.state, 'cancelled')
-  assert.match(general.cancel_reason!, /under the 5% minimum/)
+  assert.match(general.cancel_reason!, /under the 15% minimum/)
   assert.equal(w.sent.filter((s) => s.channel === 'general').length, 0)
 })
 
@@ -379,11 +380,11 @@ test('a general backfill goes private first, then public after a recheck, and ne
 test('a fresh offer goes ahead of the backlog, and backlog offers are rechecked first', async () => {
   const w = world()
   const add = (key: string, price: number, reason: string) => {
-    const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: key, name: `Item ${key}`, url: `https://www.amazon.eg/dp/${key}`, price, available: true }, 'monitors', w.now)
+    const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: key, name: `Item ${key}`, url: `https://www.amazon.eg/dp/${key}`, price, available: true }, 'diapers', w.now)
     w.repo.recordObservation(id, { source: 'amazon', storeKey: key, name: key, url: 'x', price, listPrice: 1000, available: true }, w.now, null)
     w.prices.set(key, price)
     const offerId = w.repo.insertOffer({ product_id: id, detected_at: w.now, price, ref_price: 1000, basis: 'advertised', pct: 100 - price / 10, labels: '[]', priority: 0, decision: 'publish', reason, status: 'scheduled' })
-    w.repo.insertDelivery(offerId, 'general', w.now, price)
+    w.repo.insertDelivery(offerId, 'supermarket', w.now, price)
   }
   add('OLD', 300, 'advertised 70% (existing offer)')
   add('NEW', 900, 'advertised 10%')
@@ -516,4 +517,60 @@ test('the usual level of Amazon blocking does not stop it', () => {
   const run = db_run(w)
   for (let i = 0; i < 20; i++) run(i < 13 ? 'blocked: x' : null)
   assert.equal(blocksSustained(w.db, w.now), false)
+})
+
+test('the public channel keeps its pace: the strongest goes first, and the rest are dropped, not delayed', async () => {
+  const w = world()
+  const add = (key: string, price: number) => {
+    const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: key, name: `Item ${key}`, url: `https://www.amazon.eg/dp/${key}`, price, available: true }, 'monitors', w.now)
+    w.repo.recordObservation(id, { source: 'amazon', storeKey: key, name: key, url: 'x', price, listPrice: 1000, available: true }, w.now, null)
+    w.prices.set(key, price)
+    const offerId = w.repo.insertOffer({ product_id: id, detected_at: w.now, price, ref_price: 1000, basis: 'advertised', pct: 100 - price / 10, labels: '[]', priority: 0, decision: 'publish', reason: 'x', status: 'scheduled' })
+    w.repo.insertDelivery(offerId, 'general', w.now, price)
+    return id
+  }
+  add('WEAK', 800)
+  add('STRONG', 650)
+  const dropped = add('MID', 750)
+  const paced = createPublisher({ db: w.db, repo: w.repo, adapters: w.deps.adapters, now: w.deps.now, send: async (ch, html) => (w.sent.push({ channel: ch, html }), { ok: true, messageId: 1, dryRun: false }), generalGapMs: 6 * MIN, generalDropAfterMs: 10 * MIN })
+  await paced.tick()
+  assert.deepEqual(w.sent.map((s) => /Item (\w+)/.exec(s.html)?.[1]), ['STRONG'])
+  w.advance(11 * MIN)
+  await paced.tick()
+  assert.equal(w.sent.length, 1, 'too late, so dropped')
+  assert.equal(w.deliveries().filter((d) => d.state === 'cancelled').length, 2)
+  assert.equal(w.repo.lastPost(dropped)?.price, 750, 'a dropped offer does not queue again at the same price')
+})
+
+test('a public offer under 15% is skipped, while the supermarket channel still takes 5%', async () => {
+  const w = world()
+  const add = (key: string, category: 'monitors' | 'diapers') => {
+    const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: key, name: key, url: 'x', price: 900, available: true }, category, w.now)
+    w.repo.recordObservation(id, { source: 'amazon', storeKey: key, name: key, url: 'x', price: 900, listPrice: 1000, available: true }, w.now, null)
+    w.db.prepare('UPDATE products SET list_price = 1000, available = 1 WHERE id = ?').run(id)
+    return evaluateAndSchedule(w.db, w.repo, id, w.now).decision?.publish
+  }
+  assert.equal(add('M', 'monitors'), false)
+  assert.equal(add('D', 'diapers'), true)
+})
+
+test('the daily top 5 rechecks prices, puts our own evidence first, mixes categories, and has no store links', async () => {
+  const w = world()
+  const add = (key: string, category: 'monitors' | 'tvs' | 'mobiles' | 'diapers', history: number[], list: number) => {
+    const { id } = w.repo.upsertProduct({ source: 'amazon', storeKey: key, name: `Item ${key}`, url: `https://www.amazon.eg/dp/${key}`, price: history.at(-1)!, available: true }, category, w.now)
+    history.forEach((price, i) => w.repo.recordObservation(id, { source: 'amazon', storeKey: key, name: key, url: 'x', price, listPrice: list, available: true }, w.now - (history.length - i) * 60 * MIN, null))
+    w.prices.set(key, history.at(-1)!)
+  }
+  add('ADV', 'tvs', [300], 1000)
+  add('OBS', 'monitors', [1000, 1000, 800], 800)
+  add('GONE', 'mobiles', [500], 1000)
+  add('BABY', 'diapers', [100], 1000)
+  w.prices.set('GONE', 950) // back up: no longer a deal
+  w.db.prepare('UPDATE products SET available = 1, last_seen_at = ?').run(w.now)
+  w.db.prepare(`UPDATE products SET list_price = CASE store_key WHEN 'OBS' THEN NULL ELSE 1000 END`).run()
+  const deals = await pickTopDeals({ db: w.db, repo: w.repo, adapters: w.deps.adapters, now: w.now })
+  assert.deepEqual(deals.map((d) => d.name), ['Item OBS', 'Item ADV'])
+  const text = renderTopDeals(deals, 'https://t.me/+abc', w.now)
+  assert.match(text, /https:\/\/t\.me\/\+abc/)
+  assert.doesNotMatch(text, /amazon\.eg|tag=/)
 })

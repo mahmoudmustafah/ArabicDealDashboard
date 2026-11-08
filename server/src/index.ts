@@ -1,5 +1,6 @@
 import { startApi } from './api.ts'
-import { publication, telegram } from './config.ts'
+import { publication, telegram, timezone } from './config.ts'
+import { pickTopDeals, renderTopDeals } from './dailyTop.ts'
 import { createRiskWatch } from './riskWatch.ts'
 import { createScreenshotter } from './screenshot.ts'
 import { openDb } from './db.ts'
@@ -28,6 +29,8 @@ const publisher = createPublisher({
   send: telegramSender,
   now,
   sendGapMs: publication.sendGapMs,
+  generalGapMs: publication.generalGapMs,
+  generalDropAfterMs: publication.generalDropAfterMs,
   // Dry runs send nothing, so they must not load store pages.
   capture: (channel, source, url, price) =>
     // Amazon posts use the product image: screenshots add load and blocks there, and Mayar said the image is fine.
@@ -39,15 +42,16 @@ if (telegram.dryRun) console.warn('[telegram] TELEGRAM_BOT_TOKEN not set: delive
 scheduler.start()
 setInterval(() => void publisher.tick().catch((e) => console.error('[publish]', e)), 5_000)
 if (telegram.token && telegram.alertChatId) {
+  const tellMayar = (text: string) =>
+    fetch(`https://api.telegram.org/bot${telegram.token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: telegram.alertChatId, text, link_preview_options: { is_disabled: true } }),
+      signal: AbortSignal.timeout(15_000),
+    })
   const riskWatch = createRiskWatch({
     db,
-    send: (text) =>
-      fetch(`https://api.telegram.org/bot${telegram.token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: telegram.alertChatId, text }),
-        signal: AbortSignal.timeout(15_000),
-      }),
+    send: tellMayar,
     // Reads the plain product page. A bot must never open the tagged link, because Amazon's terms forbid artificial clicks.
     productOk: async () => {
       const row = db.prepare(`SELECT p.url FROM deliveries d JOIN offers o ON o.id = d.offer_id JOIN products p ON p.id = o.product_id WHERE p.source = 'amazon' AND d.state = 'sent' AND d.dry_run = 0 ORDER BY d.sent_at DESC LIMIT 1`).get() as { url: string } | undefined
@@ -58,6 +62,17 @@ if (telegram.token && telegram.alertChatId) {
     },
   })
   setInterval(() => void riskWatch(), 15 * 60_000)
+
+  // The daily "top 5" for Mayar to share, at 8 pm Cairo time.
+  let topDate = ''
+  setInterval(() => {
+    const [date, hour] = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short', hourCycle: 'h23' }).format(now()).split(', ')
+    if (topDate === date || !hour.startsWith('20:')) return
+    topDate = date
+    void pickTopDeals({ db, repo, adapters, now: now(), gapMs: 3_000 })
+      .then((deals) => (deals.length ? tellMayar(renderTopDeals(deals, process.env.PUBLIC_INVITE_LINK ?? 'https://t.me/orodmano', now())) : undefined))
+      .catch((e) => console.error('[top5]', e))
+  }, 60_000)
 }
 startApi({ db, repo, scheduler, now })
 

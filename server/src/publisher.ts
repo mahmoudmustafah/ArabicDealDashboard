@@ -25,6 +25,10 @@ export type PublisherDeps = {
   now: () => number
   /** Gap between sends, so the bot stays under Telegram's limits. Default none. */
   sendGapMs?: number
+  /** The public channel's pace. Default none. */
+  generalGapMs?: number
+  /** A public post that waits this long is dropped. Default never. */
+  generalDropAfterMs?: number
   /** Screenshot of the offer on the store page. Null or a failure falls back to the product image. */
   capture?: (channel: Channel, source: SourceId, url: string, price: number) => Promise<Buffer | null>
 }
@@ -35,7 +39,11 @@ export function createPublisher(deps: PublisherDeps) {
   const { db, repo } = deps
   const dueQ = db.prepare(`SELECT d.*, o.priority AS offer_priority, o.pct AS offer_pct FROM deliveries d JOIN offers o ON o.id = d.offer_id
     WHERE (d.state = 'scheduled' AND d.scheduled_at <= ?) OR (d.state = 'retrying' AND d.next_attempt_at <= ?)
-    ORDER BY o.reason LIKE '%${EXISTING_OFFER}' ASC, d.channel = 'priority' DESC, o.pct DESC, d.scheduled_at LIMIT 300`)
+    ORDER BY (o.reason LIKE '%${EXISTING_OFFER}' AND d.channel != 'general') ASC, d.channel = 'priority' DESC, o.pct DESC, d.scheduled_at LIMIT 300`)
+  const lastGeneral = db.prepare(`SELECT MAX(sent_at) t FROM deliveries WHERE channel = 'general' AND state = 'sent' AND dry_run = 0`)
+  const staleGeneral = db.prepare(`SELECT id, offer_id FROM deliveries WHERE channel = 'general' AND state = 'scheduled' AND scheduled_at < ?`)
+  const dropGeneral = db.prepare(`UPDATE deliveries SET state = 'cancelled', cancel_reason = 'Dropped: stronger offers took the slot', next_attempt_at = NULL WHERE id = ?`)
+  const markDropped = db.prepare(`UPDATE offers SET status = 'dropped' WHERE id = ? AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.offer_id = offers.id AND d.state IN ('sent', 'scheduled', 'retrying', 'sending'))`)
   const offerQ = db.prepare('SELECT * FROM offers WHERE id = ?')
   const setState = db.prepare(
     'UPDATE deliveries SET state = ?, attempts = ?, next_attempt_at = ?, sent_at = ?, message_id = ?, dry_run = ?, cancel_reason = ?, posted_price = ? WHERE id = ?',
@@ -145,7 +153,7 @@ export function createPublisher(deps: PublisherDeps) {
     // The price may have moved since the decision. Never post a discount under the minimum for its basis.
     const shownPct = offer.ref_price ? ((offer.ref_price - price) / offer.ref_price) * 100 : offer.pct
     const minPct = backfill ? Number(offer.reason.match(/\(min (\d+)%\)/)?.[1] ?? P.backfillMinPct) : minPctFor[offer.basis as Basis]
-    const minShown = existing ? Math.max(minPct, P.existingMinPct) : minPct
+    const minShown = Math.max(minPct, existing ? P.existingMinPct : 0, d.channel === 'general' ? P.generalMinPct : 0)
     if (shownPct < minShown) {
       d.state = 'cancelled'
       d.cancel_reason = `Discount is now ${Math.round(shownPct)}%, under the ${minShown}% minimum`
@@ -208,7 +216,15 @@ export function createPublisher(deps: PublisherDeps) {
         for (;;) {
           const now = deps.now()
           if (now < pausedUntil) break
-          const next = (dueQ.all(now, now) as Due[]).find((x) => !handled.has(x.id))
+          // Inside the public channel's gap its posts wait, and the ones left too long are dropped so nothing goes out late.
+          if (deps.generalDropAfterMs) {
+            for (const x of staleGeneral.all(now - deps.generalDropAfterMs) as { id: number; offer_id: number }[]) {
+              dropGeneral.run(x.id)
+              markDropped.run(x.offer_id)
+            }
+          }
+          const gapOpen = !deps.generalGapMs || now - ((lastGeneral.get() as { t: number | null }).t ?? 0) >= deps.generalGapMs
+          const next = (dueQ.all(now, now) as Due[]).find((x) => !handled.has(x.id) && (gapOpen || x.channel !== 'general'))
           if (!next) break
           handled.add(next.id)
           await handle(next, now)
