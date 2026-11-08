@@ -69,6 +69,7 @@ Set these in `server/.env`, then restart the service:
 | `AMAZON_AFFILIATE_TAG=orodmano-21` | Adds the tag to Amazon links in posts |
 | `AMAZON_AFFILIATE=off` | Stops adding the tag |
 | `AMAZON_POSTING=off` | Stops all Amazon posts and cancels queued ones. Scanning continues |
+| `AMAZON_SCREENSHOT=off` | Amazon posts use the plain product image instead of the page screenshot |
 | `TELEGRAM_ALERT_CHAT_ID` | Mayar's own chat with the bot, for block warnings and the daily summary |
 
 The affiliate disclosure is in each channel's description and pinned message, not in the posts. That was Mayar's decision on 2026-11-07.
@@ -76,3 +77,5 @@ The affiliate disclosure is in each channel's description and pinned message, no
 The risk guard stops Amazon posts and the tag by itself if Amazon blocks over 85% of runs for two hours, or the daily product page check fails. Amazon scanning drops to once an hour meanwhile. After 6 clear hours everything comes back, and Mayar gets a Telegram message both times. `AMAZON_POSTING=off` is the manual stop.
 
 `EMARATI_SCAN=off` in `server/.env`, then a restart, stops scanning Emarati Scents.
+
+Put the channel logo at `assets/logo.png` in the repo root (a transparent PNG is best). Screenshots show it bottom left, and skip it if the file is missing.

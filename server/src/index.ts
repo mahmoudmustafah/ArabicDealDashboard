@@ -1,5 +1,6 @@
 import { startApi } from './api.ts'
-import { publication, telegram, timezone } from './config.ts'
+import { amazonScreenshotOff, publication, telegram, timezone } from './config.ts'
+import { recordScreenshotRun } from './riskWatch.ts'
 import { pickTopDeals, renderTopDeals } from './dailyTop.ts'
 import { createRiskWatch } from './riskWatch.ts'
 import { createScreenshotter } from './screenshot.ts'
@@ -33,8 +34,13 @@ const publisher = createPublisher({
   generalDropAfterMs: publication.generalDropAfterMs,
   // Dry runs send nothing, so they must not load store pages.
   capture: (channel, source, url, price) =>
-    // Amazon posts use the product image: screenshots add load and blocks there, and Mayar said the image is fine.
-    source !== 'amazon' && telegram.token && telegram.chatId(channel) ? screenshot(source, url, price) : Promise.resolve(null),
+    !telegram.token || !telegram.chatId(channel) || (source === 'amazon' && amazonScreenshotOff)
+      ? Promise.resolve(null)
+      : screenshot(source, url, price).then((shot) => {
+          // Screenshots load Amazon pages too, so the risk guard should count their blocks.
+          if (source === 'amazon') recordScreenshotRun(db, now(), screenshot.lastBlocked)
+          return shot
+        }),
 })
 
 if (telegram.dryRun) console.warn('[telegram] TELEGRAM_BOT_TOKEN not set: deliveries are recorded as dry-run, nothing is sent')

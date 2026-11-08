@@ -206,6 +206,8 @@ export const ownChannel = (category: string) => categoryChannel[category as Cate
 
 /** Amazon Associates tag added to Amazon links in posts. Empty means plain links and no disclosure. */
 export const amazonAffiliateTag = process.env.AMAZON_AFFILIATE === 'off' ? '' : (process.env.AMAZON_AFFILIATE_TAG ?? '')
+/** AMAZON_SCREENSHOT=off goes back to the plain product image for Amazon posts. */
+export const amazonScreenshotOff = process.env.AMAZON_SCREENSHOT === 'off'
 /** Kill switch: AMAZON_POSTING=off in server/.env, then restart, stops every Amazon post. Scanning continues. */
 export const amazonPostingOff = process.env.AMAZON_POSTING === 'off'
 

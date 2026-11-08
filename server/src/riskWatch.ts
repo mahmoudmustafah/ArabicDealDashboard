@@ -12,6 +12,11 @@ export type RiskThresholds = { blockedShare: number; minRuns: number }
 export const defaultThresholds: RiskThresholds = { blockedShare: 0.8, minRuns: 6 }
 const BLOCKED = `(error LIKE '%blocked%' OR error LIKE '%layout_changed%')`
 
+/** Counts a screenshot's page load in the block rate. */
+export function recordScreenshotRun(db: DB, now: number, blocked: boolean) {
+  db.prepare(`INSERT INTO scan_runs (job_id, source, category, due_at, started_at, finished_at, status, error) VALUES ('amazon-screenshot', 'amazon', 'screenshot', ?, ?, ?, ?, ?)`).run(now, now, now, blocked ? 'failed' : 'success', blocked ? 'blocked: screenshot' : null)
+}
+
 export function blockStats(db: DB, now: number, sinceMs: number) {
   return db
     .prepare(`SELECT COUNT(*) n, COALESCE(SUM(${BLOCKED}), 0) blocked FROM scan_runs WHERE source = 'amazon' AND finished_at IS NOT NULL AND started_at > ?`)

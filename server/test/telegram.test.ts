@@ -90,3 +90,9 @@ test('the line under a store discount says what we actually know', () => {
   assert.match(line({ readings: 40, days: 12, stable: false, atLowest: false, lowest: 70 }), /وشفناه قبل كده بأقل \(70 جنيه\)/)
   assert.doesNotMatch(line({ readings: 300, days: 3, stable: true, atLowest: true, lowest: 80 }), /حقيقي|بجد|لسه بنتابع/)
 })
+
+test('an Amazon post opens with Amazon in bold; other stores keep their first line', () => {
+  const post = (source: string) => renderMessage({ key: 1, name: 'A', source, price: 80, refPrice: 100, basis: 'advertised', pct: 20, promos: [], exceptional: false, checkedAt: 0, url: 'https://www.amazon.eg/dp/B000000001' }).html
+  assert.ok(post('amazon').startsWith('<b>أمازون</b> 🛒 📦 🇪🇬\n\n<b>'))
+  assert.doesNotMatch(post('noon'), /أمازون/)
+})

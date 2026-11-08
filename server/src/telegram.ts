@@ -139,6 +139,7 @@ export function renderMessage(c: PostContent): Rendered {
 
   const link = affiliateUrl(c.source, c.url, c.affiliateTag ?? amazonAffiliateTag)
   const lines = [
+    ...(c.source === 'amazon' ? ['<b>أمازون</b> 🛒 📦 🇪🇬', ''] : []),
     `<b>${hook}</b>`,
     '',
     `<b>${esc(name)}</b>`,
