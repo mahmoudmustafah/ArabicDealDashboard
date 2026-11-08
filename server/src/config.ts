@@ -52,7 +52,7 @@ export type Source = { id: SourceId; name: string; ar: string; baseUrl: string; 
 export const sources: Source[] = [
   { id: 'amazon', name: 'Amazon Egypt', ar: 'أمازون مصر', baseUrl: 'https://www.amazon.eg', enabled: true },
   { id: 'noon', name: 'Noon Egypt', ar: 'نون مصر', baseUrl: 'https://www.noon.com', enabled: true },
-  { id: 'emarati', name: 'Emarati Scents', ar: 'إماراتي سنتس', baseUrl: 'https://emaratiscents.com', enabled: true },
+  { id: 'emarati', name: 'Emarati Scents', ar: 'إماراتي سنتس', baseUrl: 'https://emaratiscents.com', enabled: process.env.EMARATI_SCAN !== 'off' },
 ]
 
 /**
