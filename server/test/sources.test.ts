@@ -132,6 +132,7 @@ test('amazon product: CSS inside a coupon badge is not read as text', () => {
 test('the logo stamp goes bottom left, moves right to stay clear, and stays off if neither fits', () => {
   const frame = { top: 0, width: 1000, height: 800 }
   assert.equal(logoSpot(frame, [])?.x, 24)
+  assert.ok(logoSpot(frame, [], true)!.x > 800)
   const buyBox = { x: 0, y: 200, width: 300, height: 600 }
   assert.ok(logoSpot(frame, [buyBox])!.x > 800)
   assert.equal(logoSpot(frame, [buyBox, { x: 700, y: 200, width: 300, height: 600 }]), undefined)

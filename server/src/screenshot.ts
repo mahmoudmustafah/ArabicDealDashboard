@@ -26,6 +26,8 @@ type StoreView = {
   highlight?: string[]
   /** Parts of the page the logo must not cover. */
   keepClear?: string[]
+  /** The page's button sits bottom left, so the logo starts on the right. */
+  logoRight?: boolean
 }
 
 const stores: Record<SourceId, StoreView> = {
@@ -40,6 +42,7 @@ const stores: Record<SourceId, StoreView> = {
     localize: (u) => u.replace('/egypt-en/', '/egypt-ar/'),
     price: '[class*="priceNowCtr"]',
     highlight: ['[class*="priceOfferCtr"]'],
+    logoRight: true,
   },
   emarati: {
     localize: (u) => u,
@@ -72,10 +75,11 @@ type Box = { x: number; y: number; width: number; height: number }
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 
 /** Bottom left like a stamp, unless that covers the price, a red box or the buy box. Then bottom right, or nowhere. */
-export function logoSpot(frame: { top: number; width: number; height: number }, avoid: Box[]) {
+export function logoSpot(frame: { top: number; width: number; height: number }, avoid: Box[], startRight = false) {
   const size = frame.width * LOGO_SHARE
   const y = frame.top + frame.height - size - LOGO_MARGIN
-  const spots = [LOGO_MARGIN, frame.width - size - LOGO_MARGIN].map((x) => ({ x, y, width: size, height: size }))
+  const sides = [LOGO_MARGIN, frame.width - size - LOGO_MARGIN]
+  const spots = (startRight ? sides.reverse() : sides).map((x) => ({ x, y, width: size, height: size }))
   return spots.find((spot) => !avoid.some((b) => overlaps(spot, b)))
 }
 
@@ -132,7 +136,7 @@ async function capture(page: Page, source: SourceId, url: string, expected: numb
     const box = await page.locator(sel).first().boundingBox({ timeout: 1000 }).catch(() => null)
     if (box) keepClear.push(box)
   }
-  await page.evaluate(overlayScript({ boxes, frame, logo: logoDataUrl(), spot: logoSpot(frame, keepClear) }))
+  await page.evaluate(overlayScript({ boxes, frame, logo: logoDataUrl(), spot: logoSpot(frame, keepClear, s.logoRight) }))
   return page.screenshot({ type: 'jpeg', quality: 80, fullPage: true, clip: { x: 0, y: top, width: VIEW.width, height } })
 }
 
