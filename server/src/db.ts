@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { ownChannel } from './config.ts'
 
 /**
  * Storage. Built-in node:sqlite, so there are no native dependencies. All times are UTC epoch ms,
@@ -118,7 +119,52 @@ CREATE TABLE IF NOT EXISTS watchlist (
 export function openDb(path = process.env.DEAL_RADAR_DB ?? 'deal-radar.sqlite'): DB {
   const db = new DatabaseSync(path)
   db.exec(schema)
+  mergeDuplicateProducts(db)
+  // One row per product. A listing shows no seller and a product page does, and that used to split a product in two.
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS products_one_per_key ON products (source, store_key)')
   return db
+}
+
+/** Moves every duplicate's history onto one product row. Safe to run again: it does nothing once there are none. */
+export function mergeDuplicateProducts(db: DB) {
+  const groups = db.prepare('SELECT source, store_key FROM products GROUP BY source, store_key HAVING COUNT(*) > 1').all() as { source: string; store_key: string }[]
+  if (!groups.length) return 0
+  const rows = db.prepare(`SELECT * FROM products WHERE source = ? AND store_key = ? ORDER BY seller != '', id`)
+  const moves = ['observations', 'read_failures', 'offers'].map((t) => db.prepare(`UPDATE ${t} SET product_id = ? WHERE product_id = ?`))
+  const watch = db.prepare('INSERT OR IGNORE INTO watchlist (product_id, added_at) SELECT ?, added_at FROM watchlist WHERE product_id = ?')
+  const unwatch = db.prepare('DELETE FROM watchlist WHERE product_id = ?')
+  const remove = db.prepare('DELETE FROM products WHERE id = ?')
+  const update = db.prepare('UPDATE products SET discovered_at = ?, last_seen_at = ?, last_attempt_at = ?, last_failure_at = ?, last_failure = ?, list_price = ?, available = ?, promo = ?, category = ? WHERE id = ?')
+  const max = (a: number | null, b: number | null) => (a === null ? b : b === null ? a : Math.max(a, b))
+  type Row = { id: number; discovered_at: number; last_seen_at: number | null; last_attempt_at: number | null; last_failure_at: number | null; last_failure: string | null; list_price: number | null; available: number | null; promo: string | null; category: string }
+  tx(db, () => {
+    for (const g of groups) {
+      const [keep, ...others] = rows.all(g.source, g.store_key) as Row[]
+      const merged = [keep, ...others]
+      const latest = merged.reduce((a, b) => ((b.last_seen_at ?? 0) > (a.last_seen_at ?? 0) ? b : a))
+      const failed = merged.reduce((a, b) => ((b.last_failure_at ?? 0) > (a.last_failure_at ?? 0) ? b : a))
+      for (const o of others) {
+        for (const m of moves) m.run(keep.id, o.id)
+        watch.run(keep.id, o.id)
+        unwatch.run(o.id)
+        remove.run(o.id)
+      }
+      update.run(
+        Math.min(...merged.map((r) => r.discovered_at)),
+        latest.last_seen_at,
+        merged.reduce((a: number | null, r) => max(a, r.last_attempt_at), null),
+        failed.last_failure_at,
+        failed.last_failure,
+        latest.list_price,
+        latest.available,
+        latest.promo,
+        // A product with its own channel must keep going there.
+        (merged.find((r) => ownChannel(r.category)) ?? keep).category,
+        keep.id,
+      )
+    }
+  })
+  return groups.length
 }
 
 export function tx<T>(db: DB, fn: () => T): T {

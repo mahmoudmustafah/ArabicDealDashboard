@@ -28,6 +28,8 @@ export type PostContent = {
   url: string
   image?: string
   pack?: Pack
+  /** Our own readings of this product, for the line under a store-advertised discount. */
+  tracked?: { readings: number; days: number; stable: boolean; atLowest: boolean; lowest: number }
   /** Defaults to the configured Amazon Associates tag. */
   affiliateTag?: string
 }
@@ -73,8 +75,25 @@ function pick<T>(list: T[], key: number | string): T {
   return list[(h >>> 0) % list.length]
 }
 
+/** "3 أيام", "يومين"… Under a day there is no number to give. */
+const daysAr = (days: number) => {
+  const n = Math.max(1, Math.floor(days))
+  return n === 1 ? 'يوم' : n === 2 ? 'يومين' : n <= 10 ? `${n} أيام` : `${n} يوم`
+}
+
+/** What we actually know about a store-advertised discount. It never claims the discount is real. */
+function advertisedLine(t: PostContent['tracked']) {
+  const base = 'ℹ️ الخصم حسب الموقع'
+  if (!t) return base
+  if (t.readings <= 1) return `${base}، ولسه أول مرة نشوفه`
+  const since = t.days < 1 ? 'من النهارده' : `من ${daysAr(t.days)}`
+  if (t.stable) return `${base}، وسعره ثابت عندنا ${since}`
+  if (t.atLowest) return `${base}، وده أقل سعر شفناه ${since}`
+  return `${base}، وشفناه قبل كده بأقل (${num(t.lowest)} جنيه)`
+}
+
 function evidenceLine(c: PostContent) {
-  if (c.basis === 'advertised') return 'ℹ️ الخصم حسب الموقع، ولسه بنتابع سعره بنفسنا'
+  if (c.basis === 'advertised') return advertisedLine(c.tracked)
   if (c.basis === 'below_usual') return '✅ قارناه بسعره المعتاد، مش باللي الموقع كاتبه'
   if (!c.sufficient)
     return c.lowestSeen ? 'ℹ️ لسه بنتابعه من قريب، بس ده أقل من كل اللي شفناه' : 'ℹ️ شفناه بسعر أعلى قبل كده، ولسه بنتابع سعره'

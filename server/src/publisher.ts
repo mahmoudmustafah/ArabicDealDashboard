@@ -165,7 +165,17 @@ export function createPublisher(deps: PublisherDeps) {
     d.state = 'sending'
     save(d)
     const a = analyze(repo.history(p.id, now - HISTORY_WINDOW_MS), p.list_price ?? undefined)
+    const seen = repo.history(p.id, 0)
+    const band = E.samePriceBandPct / 100
+    const tracked = {
+      readings: seen.length,
+      days: seen.length ? (now - seen[0].t) / 86_400_000 : 0,
+      stable: seen.every((o) => Math.abs(o.price - price) / price <= band),
+      atLowest: seen.every((o) => price <= o.price),
+      lowest: seen.reduce((low, o) => Math.min(low, o.price), price),
+    }
     const msg = renderMessage({
+      tracked,
       key: p.id,
       name: p.name,
       category: p.category,

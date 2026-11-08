@@ -8,6 +8,7 @@ import { repo as makeRepo } from '../src/repo.ts'
 import { runJob } from '../src/scanner.ts'
 import { scheduleBackfill } from '../src/backfill.ts'
 import { publication } from '../src/config.ts'
+import { mergeDuplicateProducts } from '../src/db.ts'
 import { pickTopDeals, renderTopDeals } from '../src/dailyTop.ts'
 import { amazonPaused, amazonRisks, blocksSustained, createRiskWatch, setAmazonPaused } from '../src/riskWatch.ts'
 import { evaluateAndSchedule } from '../src/pipeline.ts'
@@ -573,4 +574,33 @@ test('the daily top 5 rechecks prices, puts our own evidence first, mixes catego
   const text = renderTopDeals(deals, 'https://t.me/+abc', w.now)
   assert.match(text, /https:\/\/t\.me\/\+abc/)
   assert.doesNotMatch(text, /amazon\.eg|tag=/)
+})
+
+test('duplicate products merge into one, keeping all history, and cannot come back', () => {
+  const w = world()
+  w.db.exec('DROP INDEX products_one_per_key')
+  const insert = w.db.prepare(`INSERT INTO products (source, store_key, seller, category, name, url, discovered_at, last_seen_at, list_price) VALUES ('amazon', 'A', ?, ?, 'A', 'x', ?, ?, ?)`)
+  const a = Number(insert.run('', 'monitors', 100, 500, 900).lastInsertRowid)
+  const b = Number(insert.run('Amazon.eg', 'diapers', 50, 800, 1000).lastInsertRowid)
+  for (const [id, t] of [[a, 500], [b, 800], [a, 300]]) w.db.prepare('INSERT INTO observations (product_id, t, price) VALUES (?, ?, 80)').run(id, t)
+  const offer = w.repo.insertOffer({ product_id: b, detected_at: 800, price: 80, ref_price: 100, basis: 'advertised', pct: 20, labels: '[]', priority: 0, decision: 'publish', reason: 'x', status: 'published' })
+  w.repo.insertDelivery(offer, 'general', 800, 80)
+  w.db.prepare(`UPDATE deliveries SET state = 'sent', dry_run = 0, sent_at = 800, posted_price = 80`).run()
+  w.db.prepare('INSERT INTO watchlist (product_id, added_at) VALUES (?, 1)').run(b)
+
+  assert.equal(mergeDuplicateProducts(w.db), 1)
+  const rows = w.db.prepare(`SELECT * FROM products WHERE store_key = 'A'`).all() as { id: number; discovered_at: number; last_seen_at: number; list_price: number; category: string }[]
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].id, a)
+  assert.equal(rows[0].discovered_at, 50)
+  assert.equal(rows[0].last_seen_at, 800)
+  assert.equal(rows[0].list_price, 1000)
+  assert.equal(rows[0].category, 'diapers', 'keeps its own channel')
+  assert.equal((w.db.prepare('SELECT COUNT(*) n FROM observations WHERE product_id = ?').get(a) as { n: number }).n, 3)
+  assert.equal(w.repo.lastPost(a)?.price, 80, 'the no-repost rule still sees the post')
+  assert.equal((w.db.prepare('SELECT product_id p FROM watchlist').get() as { p: number }).p, a)
+  assert.equal(mergeDuplicateProducts(w.db), 0)
+
+  w.db.exec('CREATE UNIQUE INDEX products_one_per_key ON products (source, store_key)')
+  assert.throws(() => insert.run('Other', 'monitors', 1, 1, 1), /UNIQUE/)
 })

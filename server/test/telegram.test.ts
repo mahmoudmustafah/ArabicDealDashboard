@@ -21,7 +21,7 @@ test('channel style: price line, saving, evidence, store, hashtags, button', () 
 test('advertised discounts never claim to be real', () => {
   for (let key = 0; key < 50; key++) {
     const { html } = renderMessage({ ...base, key, basis: 'advertised' })
-    assert.match(html, /ℹ️ الخصم حسب الموقع، ولسه بنتابع سعره بنفسنا/)
+    assert.match(html, /ℹ️ الخصم حسب الموقع/)
     assert.doesNotMatch(html, /بجد|حقيقي/)
   }
 })
@@ -79,4 +79,14 @@ test('the caption shows the same link as the button, as a plain URL', () => {
 test('a long post with a long link still fits a Telegram caption', () => {
   const { html } = renderMessage({ key: 3, name: 'ن'.repeat(900), source: 'noon', price: 80, refPrice: 100, basis: 'advertised', pct: 20, promos: [{ kind: 'coupon', text: 'ك'.repeat(900) }, { kind: 'member', text: 'م'.repeat(900) }, { kind: 'other', text: 'ع'.repeat(900) }], exceptional: true, checkedAt: 0, url: `https://www.noon.com/egypt-en/${'a'.repeat(250)}/N1/p/`, category: 'electronics' })
   assert.ok(html.replace(/<[^>]+>/g, '').length <= 1024, `length ${html.length}`)
+})
+
+test('the line under a store discount says what we actually know', () => {
+  const line = (tracked: PostContent['tracked']) => renderMessage({ key: 1, name: 'A', source: 'noon', price: 80, refPrice: 100, basis: 'advertised', pct: 20, promos: [], exceptional: false, checkedAt: 0, url: 'https://www.noon.com/x', tracked }).html
+  assert.match(line({ readings: 1, days: 0, stable: true, atLowest: true, lowest: 80 }), /الخصم حسب الموقع، ولسه أول مرة نشوفه/)
+  assert.match(line({ readings: 300, days: 3.4, stable: true, atLowest: true, lowest: 80 }), /الخصم حسب الموقع، وسعره ثابت عندنا من 3 أيام/)
+  assert.match(line({ readings: 5, days: 0.2, stable: true, atLowest: true, lowest: 80 }), /ثابت عندنا من النهارده/)
+  assert.match(line({ readings: 40, days: 2.1, stable: false, atLowest: true, lowest: 80 }), /وده أقل سعر شفناه من يومين/)
+  assert.match(line({ readings: 40, days: 12, stable: false, atLowest: false, lowest: 70 }), /وشفناه قبل كده بأقل \(70 جنيه\)/)
+  assert.doesNotMatch(line({ readings: 300, days: 3, stable: true, atLowest: true, lowest: 80 }), /حقيقي|بجد|لسه بنتابع/)
 })
