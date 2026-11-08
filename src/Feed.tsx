@@ -1,7 +1,7 @@
 import { Info, ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { Meta, ScanRun, SourceId } from './api'
-import { latestPerJob, statuses, stores, type Item } from './deal'
+import { latestPerJob, MIN_OBS, MIN_SPAN_DAYS, statuses, stores, type Item } from './deal'
 import { DAY, HOUR } from './format'
 import { isAr, L, tx, type T as Tx } from './i18n'
 import { OfferCard } from './OfferCard'
@@ -100,6 +100,9 @@ export function Feed({ items, scans, info, saved, toggleSave, openId, open, goSc
       offers: items.length,
       observed: items.filter((i) => i.a.prevHigher).length,
       sufficient: items.filter((i) => i.a.sufficient).length,
+      // The product we have followed longest, counted in days, and how many have a useful number of readings.
+      historyDay: Math.min(MIN_SPAN_DAYS, Math.ceil(items.reduce((most, i) => Math.max(most, i.a.spanDays), 0))),
+      withReadings: items.filter((i) => i.a.count >= MIN_OBS).length,
       pending: items.filter((i) => i.a.exceptional).length,
     }),
     [items],
@@ -169,12 +172,16 @@ export function Feed({ items, scans, info, saved, toggleSave, openId, open, goSc
       <section className="grid grid-cols-2 gap-3 @3xl:grid-cols-4">
         <Stat label={L('عروض لقيناها', 'Offers found')} value={stats.offers} hint={L('فيها خصم معلن أو نزول مرصود', 'Advertised discount or observed drop')} />
         <Stat label={L('نزول مرصود', 'Observed drops')} value={stats.observed} hint={L('اترصد قبل كده بسعر أعلى', 'Seen before at a higher price')} tone="drop" />
-        <Stat
-          label={L('ليها سجل سعر كافي', 'Enough price history')}
-          value={stats.sufficient}
-          total={items.length}
-          hint={L('10 قراءات على الأقل في 21 يوم', 'At least 10 readings over 21 days')}
-        />
+        {stats.sufficient > 0 ? (
+          <Stat
+            label={L('ليها سجل سعر كافي', 'Enough price history')}
+            value={stats.sufficient}
+            total={items.length}
+            hint={L('10 قراءات على الأقل في 21 يوم', 'At least 10 readings over 21 days')}
+          />
+        ) : (
+          <HistoryProgress day={stats.historyDay} products={items.length} withReadings={stats.withReadings} />
+        )}
         <Stat label={L('قيد التحقق', 'Verifying')} value={stats.pending} hint={L('نزول كبير مستني فحص تاني', 'Large drop awaiting a second check')} tone="pending" />
       </section>
 
@@ -294,6 +301,32 @@ export function Feed({ items, scans, info, saved, toggleSave, openId, open, goSc
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+function HistoryProgress({ day, products, withReadings }: { day: number; products: number; withReadings: number }) {
+  const n = (x: number) => x.toLocaleString('en-US')
+  return (
+    <div className="rounded-2xl border border-line bg-white p-4">
+      <div className="text-[12.5px] font-semibold text-body">{L('سجل الأسعار', 'Price history')}</div>
+      <div className="num mt-1 text-[30px] leading-9 font-bold tracking-tight">
+        {L(`يوم ${day}`, `Day ${day}`)}
+        <span className="text-[16px] font-medium text-mute"> {L(`من ${MIN_SPAN_DAYS}`, `of ${MIN_SPAN_DAYS}`)}</span>
+      </div>
+      <div
+        className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-canvas"
+        role="progressbar"
+        aria-valuenow={day}
+        aria-valuemin={0}
+        aria-valuemax={MIN_SPAN_DAYS}
+        aria-label={L('أيام سجل الأسعار', 'Days of price history')}
+      >
+        <div className="h-full rounded-full bg-drop" style={{ width: `${(day / MIN_SPAN_DAYS) * 100}%` }} />
+      </div>
+      <div className="num mt-1.5 text-[11.5px] leading-4 text-mute">
+        {L(`${n(products)} منتج بنتابعهم · ${n(withReadings)} ليهم ${MIN_OBS} قراءات أو أكتر`, `${n(products)} products tracked · ${n(withReadings)} with ${MIN_OBS}+ readings`)}
+      </div>
     </div>
   )
 }
