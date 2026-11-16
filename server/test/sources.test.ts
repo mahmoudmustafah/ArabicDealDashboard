@@ -137,3 +137,17 @@ test('the logo stamp goes bottom left, moves right to stay clear, and stays off 
   assert.ok(logoSpot(frame, [buyBox])!.x > 800)
   assert.equal(logoSpot(frame, [buyBox, { x: 700, y: 200, width: 300, height: 600 }]), undefined)
 })
+
+test('an Amazon recheck rereads the listing page, once, and fails when the product is gone', async () => {
+  const urls: string[] = []
+  const page = fx('amazon-live-search.html')
+  const a = amazonAdapter(async (url) => (urls.push(url), { status: 200, text: page }))
+  const asin = parseAmazonSearch(page).listings[0].storeKey
+  const job = jobs.find((j) => j.source === 'amazon' && !j.off && j.category === 'cosmetics')!
+  const l = await a.product(asin, 'https://www.amazon.eg/dp/' + asin, 'cosmetics')
+  assert.equal(l?.storeKey, asin)
+  await a.product(asin, 'https://www.amazon.eg/dp/' + asin, 'cosmetics')
+  assert.equal(urls.length, 1, 'the page is reused')
+  assert.ok(urls[0].includes(job.target.split('?')[0]))
+  await assert.rejects(a.product('B000000000', 'x', 'cosmetics'), (e: unknown) => e instanceof FetchError)
+})

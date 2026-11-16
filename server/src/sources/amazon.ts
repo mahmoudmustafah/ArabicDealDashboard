@@ -1,5 +1,5 @@
 import { parse, type HTMLElement } from 'node-html-parser'
-import type { JobDef } from '../config.ts'
+import { jobs, type JobDef } from '../config.ts'
 import { classifyPromos } from '../units.ts'
 import { checkResponse, httpFetch, parsePrice } from './http.ts'
 import { FetchError, type Fetcher, type Listing, type PageResult, type SourceAdapter } from './types.ts'
@@ -77,7 +77,10 @@ function text(el: HTMLElement | null | undefined) {
   return t || undefined
 }
 
+const LISTING_CACHE_MS = 5 * 60_000
+
 export function amazonAdapter(fetcher: Fetcher = httpFetch): SourceAdapter {
+  const listingCache = new Map<string, { at: number; listings: Listing[] }>()
   return {
     id: 'amazon',
     async listingPage(job: JobDef, page: number) {
@@ -86,7 +89,23 @@ export function amazonAdapter(fetcher: Fetcher = httpFetch): SourceAdapter {
       checkResponse(r, url)
       return parseAmazonSearch(r.text)
     },
-    async product(asin: string) {
+    // Rechecks reread the listing page the product came from, not its product page, so Amazon sees fewer, ordinary
+    // requests. A page read in the last few minutes is reused. A product that is no longer listed can't be confirmed.
+    async product(asin: string, _url: string, category?: string) {
+      const job = category ? jobs.find((j) => j.source === 'amazon' && !j.off && j.category === category) : undefined
+      if (job) {
+        const url = `${BASE}${job.target}${job.target.includes('?') ? '&' : '?'}page=1&language=ar_AE`
+        let page = listingCache.get(url)
+        if (!page || Date.now() - page.at > LISTING_CACHE_MS) {
+          const r = await fetcher(url)
+          checkResponse(r, url)
+          page = { at: Date.now(), listings: parseAmazonSearch(r.text).listings }
+          listingCache.set(url, page)
+        }
+        const found = page.listings.find((l) => l.storeKey === asin)
+        if (!found) throw new FetchError('layout_changed', 'No longer on its listing page')
+        return found
+      }
       const url = `${BASE}/dp/${asin}?language=ar_AE`
       const r = await fetcher(url)
       checkResponse(r, url)

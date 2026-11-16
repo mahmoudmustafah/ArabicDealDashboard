@@ -1,4 +1,4 @@
-import { jobs as allJobs, schedule as S, sources, type JobDef, type SourceId } from './config.ts'
+import { amazonPausedUntil, jobs as allJobs, schedule as S, sources, type JobDef, type SourceId } from './config.ts'
 import { amazonPaused, GUARD } from './riskWatch.ts'
 import { runJob, type ScanDeps } from './scanner.ts'
 
@@ -29,7 +29,7 @@ export function slotFor(job: JobDef, t: number) {
 
 export function createScheduler(deps: ScanDeps, jobs: JobDef[] = allJobs) {
   const enabled = new Set(sources.filter((s) => s.enabled).map((s) => s.id))
-  const active = jobs.filter((j) => enabled.has(j.source))
+  const active = jobs.filter((j) => enabled.has(j.source) && !j.off)
   const st = new Map<string, { state: JobStatus['state']; lastStartedDue?: number; queuedDue?: number; lastSlot?: number; overlaps: number }>()
   const queues = new Map<SourceId, Promise<unknown>>()
   for (const j of active) st.set(j.id, { state: 'idle', overlaps: 0 })
@@ -63,6 +63,7 @@ export function createScheduler(deps: ScanDeps, jobs: JobDef[] = allJobs) {
       if (s.lastSlot !== undefined && s.lastSlot >= due) continue // slot already handled
       s.lastSlot = due
       // While Amazon is paused, scan it less often so the block can clear and price history keeps going.
+      if (job.source === 'amazon' && amazonPausedUntil(now)) continue
       if (job.source === 'amazon' && amazonPaused() && s.lastStartedDue !== undefined && due - s.lastStartedDue < GUARD.pausedScanEveryMs) continue
       if (s.state !== 'idle') {
         s.overlaps++ // previous run still going when this slot arrived: skip, don't double up

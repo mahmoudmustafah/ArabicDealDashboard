@@ -1,4 +1,4 @@
-import { sourceById, ownChannel, timezone, type SourceId } from './config.ts'
+import { amazonPausedUntil, sourceById, ownChannel, timezone, type SourceId } from './config.ts'
 import type { DB } from './db.ts'
 import { analyze } from './evaluate.ts'
 import { HISTORY_WINDOW_MS } from './pipeline.ts'
@@ -22,7 +22,7 @@ export async function pickTopDeals(deps: { db: DB; repo: Repo; adapters: Record<
   const { db, repo, adapters, now } = deps
   const rows = db.prepare('SELECT * FROM products WHERE available = 1 AND last_seen_at > ?').all(now - 24 * 3_600_000) as ProductRow[]
   const scored = rows
-    .filter((p) => !ownChannel(p.category))
+    .filter((p) => !ownChannel(p.category) && !(p.source === 'amazon' && amazonPausedUntil(now)))
     .map((p) => {
       const a = analyze(repo.history(p.id, now - HISTORY_WINDOW_MS), p.list_price ?? undefined)
       const best = a.inflatedBeforeDrop ? undefined : a.best

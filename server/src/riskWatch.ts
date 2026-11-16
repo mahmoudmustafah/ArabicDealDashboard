@@ -1,5 +1,5 @@
 import type { DB } from './db.ts'
-import { timezone } from './config.ts'
+import { amazonPauseUntil, timezone } from './config.ts'
 
 /**
  * Warns Mayar about signs that Amazon may be noticing the scanning, while there is still time to react.
@@ -80,6 +80,7 @@ export type RiskDeps = {
 export function createRiskWatch({ db, send, productOk, now = Date.now, dailyHour = 21 }: RiskDeps) {
   const last = new Map<string, number>()
   let summaryDate = ''
+  let lastCheck = now()
   let linkFailing = false
   let lastLinkCheck = 0
   let clearSince = 0
@@ -87,6 +88,10 @@ export function createRiskWatch({ db, send, productOk, now = Date.now, dailyHour
 
   return async function check() {
     const t = now()
+    // The planned 24-hour stop ends by itself. Say so once, when it does.
+    if (amazonPauseUntil && lastCheck < amazonPauseUntil && t >= amazonPauseUntil)
+      await say('✅ أمازون رجع يشتغل\n\nخلصت فترة الوقف (24 ساعة). رجع بشكل أخف: عروض 11.11 و5 أقسام، صفحة واحدة لكل واحد، وطلب كل حوالي دقيقتين.')
+    lastCheck = t
     const { date, hour } = cairo(t)
     const summaryDue = hour === dailyHour && summaryDate !== date
     // Daily, or hourly while a failed page is what paused Amazon.

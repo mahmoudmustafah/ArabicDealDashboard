@@ -75,30 +75,35 @@ export type JobDef = {
   intervalMin?: number
   /** False when a store's rate limit leaves no room for per-product revisits. */
   revisit?: boolean
+  /** Kept for later, not scanned. */
+  off?: boolean
 }
 
-/** Amazon blocks heavy scanning, so its category jobs run less often. Lower this to scan more. */
+/**
+ * Amazon blocks heavy scanning. Since 2026-11-16 (Mayar's plan) it runs lean: the 11.11 deals jobs and the 5 categories
+ * that yielded the most offers, one page each, about 2 minutes apart, listing prices only. The other jobs are `off`.
+ */
 const AMAZON_MIN = 30
 
 export const jobs: JobDef[] = [
-  { id: 'amazon-tvs', source: 'amazon', category: 'tvs', target: '/s?k=smart+tv&i=electronics', maxPages: 5, offsetSec: 150, intervalMin: AMAZON_MIN },
-  { id: 'amazon-mobiles', source: 'amazon', category: 'mobiles', target: '/s?k=smartphone&i=electronics', maxPages: 5, offsetSec: 300, intervalMin: AMAZON_MIN },
-  { id: 'amazon-perfumes', source: 'amazon', category: 'perfumes', target: '/s?k=perfume&i=beauty', maxPages: 4, offsetSec: 750, intervalMin: AMAZON_MIN },
-  { id: 'amazon-cosmetics', source: 'amazon', category: 'cosmetics', target: '/s?k=makeup&i=beauty', maxPages: 4, offsetSec: 1050, intervalMin: AMAZON_MIN },
-  { id: 'amazon-monitors', source: 'amazon', category: 'monitors', target: '/s?k=monitor&i=computers', maxPages: 4, offsetSec: 0, intervalMin: AMAZON_MIN },
-  { id: 'amazon-electronics', source: 'amazon', category: 'electronics', target: '/s?k=headphones&i=electronics', maxPages: 4, offsetSec: 450, intervalMin: AMAZON_MIN },
-  { id: 'amazon-keyboards', source: 'amazon', category: 'keyboards', target: '/s?k=keyboard+mouse&i=computers', maxPages: 3, offsetSec: 600, intervalMin: AMAZON_MIN },
-  { id: 'amazon-storage', source: 'amazon', category: 'storage', target: '/s?k=ssd&i=computers', maxPages: 3, offsetSec: 900, intervalMin: AMAZON_MIN },
-  { id: 'amazon-supermarket', source: 'amazon', category: 'supermarket', target: '/s?i=grocery&s=popularity-rank', maxPages: 5, offsetSec: 1200, intervalMin: AMAZON_MIN },
+  { id: 'amazon-tvs', source: 'amazon', category: 'tvs', target: '/s?k=smart+tv&i=electronics', maxPages: 5, offsetSec: 150, intervalMin: AMAZON_MIN, off: true },
+  { id: 'amazon-mobiles', source: 'amazon', category: 'mobiles', target: '/s?k=smartphone&i=electronics', maxPages: 5, offsetSec: 300, intervalMin: AMAZON_MIN, off: true },
+  { id: 'amazon-perfumes', source: 'amazon', category: 'perfumes', target: '/s?k=perfume&i=beauty', maxPages: 1, offsetSec: 1100, intervalMin: AMAZON_MIN, revisit: false },
+  { id: 'amazon-cosmetics', source: 'amazon', category: 'cosmetics', target: '/s?k=makeup&i=beauty', maxPages: 1, offsetSec: 100, intervalMin: AMAZON_MIN, revisit: false },
+  { id: 'amazon-monitors', source: 'amazon', category: 'monitors', target: '/s?k=monitor&i=computers', maxPages: 4, offsetSec: 0, intervalMin: AMAZON_MIN, off: true },
+  { id: 'amazon-electronics', source: 'amazon', category: 'electronics', target: '/s?k=headphones&i=electronics', maxPages: 1, offsetSec: 900, intervalMin: AMAZON_MIN, revisit: false },
+  { id: 'amazon-keyboards', source: 'amazon', category: 'keyboards', target: '/s?k=keyboard+mouse&i=computers', maxPages: 3, offsetSec: 600, intervalMin: AMAZON_MIN, off: true },
+  { id: 'amazon-storage', source: 'amazon', category: 'storage', target: '/s?k=ssd&i=computers', maxPages: 3, offsetSec: 900, intervalMin: AMAZON_MIN, off: true },
+  { id: 'amazon-supermarket', source: 'amazon', category: 'supermarket', target: '/s?i=grocery&s=popularity-rank', maxPages: 1, offsetSec: 300, intervalMin: AMAZON_MIN, revisit: false },
   // Amazon's own 11.11 deals filter, one job per department so grocery deals stay on the supermarket channel.
-  { id: 'amazon-deals-electronics', source: 'amazon', category: 'electronics', target: '/s?i=electronics&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 2, offsetSec: 45 },
-  { id: 'amazon-deals-beauty', source: 'amazon', category: 'cosmetics', target: '/s?i=beauty&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 2, offsetSec: 240 },
-  { id: 'amazon-deals-grocery', source: 'amazon', category: 'supermarket', target: '/s?i=grocery&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 2, offsetSec: 435 },
-  { id: 'amazon-home-care', source: 'amazon', category: 'home-care', target: '/s?k=detergent&i=grocery', maxPages: 3, offsetSec: 1350, intervalMin: AMAZON_MIN },
-  { id: 'amazon-diapers', source: 'amazon', category: 'diapers', target: '/s?k=%D8%AD%D9%81%D8%A7%D8%B8%D8%A7%D8%AA', maxPages: 5, offsetSec: 1500, intervalMin: AMAZON_MIN },
-  { id: 'amazon-baby-wipes', source: 'amazon', category: 'baby-care', target: '/s?k=baby+wipes&i=baby', maxPages: 3, offsetSec: 525, intervalMin: AMAZON_MIN },
-  { id: 'amazon-baby-formula', source: 'amazon', category: 'baby-care', target: '/s?k=baby+formula&i=baby', maxPages: 2, offsetSec: 975, intervalMin: AMAZON_MIN },
-  { id: 'amazon-baby-bath', source: 'amazon', category: 'baby-care', target: '/s?k=baby+shampoo&i=baby', maxPages: 2, offsetSec: 1425, intervalMin: AMAZON_MIN },
+  { id: 'amazon-deals-electronics', source: 'amazon', category: 'electronics', target: '/s?i=electronics&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 1, offsetSec: 0, revisit: false },
+  { id: 'amazon-deals-beauty', source: 'amazon', category: 'cosmetics', target: '/s?i=beauty&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 1, offsetSec: 200, revisit: false },
+  { id: 'amazon-deals-grocery', source: 'amazon', category: 'supermarket', target: '/s?i=grocery&rh=p_n_deal_type%3A26901036031&s=popularity-rank', maxPages: 1, offsetSec: 400, revisit: false },
+  { id: 'amazon-home-care', source: 'amazon', category: 'home-care', target: '/s?k=detergent&i=grocery', maxPages: 3, offsetSec: 1350, intervalMin: AMAZON_MIN, off: true },
+  { id: 'amazon-diapers', source: 'amazon', category: 'diapers', target: '/s?k=%D8%AD%D9%81%D8%A7%D8%B8%D8%A7%D8%AA', maxPages: 5, offsetSec: 1500, intervalMin: AMAZON_MIN, off: true },
+  { id: 'amazon-baby-wipes', source: 'amazon', category: 'baby-care', target: '/s?k=baby+wipes&i=baby', maxPages: 1, offsetSec: 500, intervalMin: AMAZON_MIN, revisit: false },
+  { id: 'amazon-baby-formula', source: 'amazon', category: 'baby-care', target: '/s?k=baby+formula&i=baby', maxPages: 2, offsetSec: 975, intervalMin: AMAZON_MIN, off: true },
+  { id: 'amazon-baby-bath', source: 'amazon', category: 'baby-care', target: '/s?k=baby+shampoo&i=baby', maxPages: 2, offsetSec: 1425, intervalMin: AMAZON_MIN, off: true },
   { id: 'noon-mobiles', source: 'noon', category: 'mobiles', target: 'electronics-and-mobiles/mobiles-and-accessories/mobiles-20905', maxPages: 5, offsetSec: 60 },
   { id: 'noon-tvs', source: 'noon', category: 'tvs', target: 'electronics-and-mobiles/television-and-video/televisions', maxPages: 4, offsetSec: 210 },
   { id: 'noon-perfumes', source: 'noon', category: 'perfumes', target: 'beauty/fragrance', maxPages: 4, offsetSec: 420 },
@@ -166,6 +171,8 @@ export const publication = {
   generalMinPct: 15,
   generalGapMs: 6 * 60_000,
   generalDropAfterMs: 10 * 60_000,
+  /** Of the public channel's posts in an hour, Amazon gets at least this many when it has candidates. */
+  generalAmazonPerHour: 3,
   /** Older offers post only from this discount. New ones post from 5%. Mayar's decision (2026-11-06), can be lowered later. */
   existingMinPct: 15,
   /** A backfilled post is skipped if its discount is now under this. */
@@ -207,6 +214,10 @@ export const ownChannel = (category: string) => categoryChannel[category as Cate
 /** Amazon Associates tag added to Amazon links in posts. Empty means plain links and no disclosure. */
 export const amazonAffiliateTag = process.env.AMAZON_AFFILIATE === 'off' ? '' : (process.env.AMAZON_AFFILIATE_TAG ?? '')
 /** AMAZON_SCREENSHOT=off goes back to the plain product image for Amazon posts. */
+/** All Amazon page loads stop until this time (AMAZON_PAUSE_UNTIL, ISO time), then resume by themselves. */
+export const amazonPauseUntil = Date.parse(process.env.AMAZON_PAUSE_UNTIL ?? '') || 0
+export const amazonPausedUntil = (now: number) => now < amazonPauseUntil
+
 export const amazonScreenshotOff = process.env.AMAZON_SCREENSHOT === 'off'
 /** Kill switch: AMAZON_POSTING=off in server/.env, then restart, stops every Amazon post. Scanning continues. */
 export const amazonPostingOff = process.env.AMAZON_POSTING === 'off'

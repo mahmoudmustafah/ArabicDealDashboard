@@ -1,4 +1,4 @@
-import { amazonPostingOff, evidence as E, ownChannel, publication as P, type Channel } from './config.ts'
+import { amazonPausedUntil, amazonPostingOff, evidence as E, ownChannel, publication as P, type Channel } from './config.ts'
 import { json, type DB } from './db.ts'
 import { analyze, type Basis } from './evaluate.ts'
 import { HISTORY_WINDOW_MS } from './pipeline.ts'
@@ -33,13 +33,14 @@ export type PublisherDeps = {
   capture?: (channel: Channel, source: SourceId, url: string, price: number) => Promise<Buffer | null>
 }
 
-type Due = DeliveryRow & { offer_priority: number; offer_pct: number }
+type Due = DeliveryRow & { offer_priority: number; offer_pct: number; source: string }
 
 export function createPublisher(deps: PublisherDeps) {
   const { db, repo } = deps
-  const dueQ = db.prepare(`SELECT d.*, o.priority AS offer_priority, o.pct AS offer_pct FROM deliveries d JOIN offers o ON o.id = d.offer_id
+  const dueQ = db.prepare(`SELECT d.*, o.priority AS offer_priority, o.pct AS offer_pct, p.source AS source FROM deliveries d JOIN offers o ON o.id = d.offer_id JOIN products p ON p.id = o.product_id
     WHERE (d.state = 'scheduled' AND d.scheduled_at <= ?) OR (d.state = 'retrying' AND d.next_attempt_at <= ?)
     ORDER BY (o.reason LIKE '%${EXISTING_OFFER}' AND d.channel != 'general') ASC, d.channel = 'priority' DESC, o.pct DESC, d.scheduled_at LIMIT 300`)
+  const amazonGeneralLastHour = db.prepare(`SELECT COUNT(*) n FROM deliveries d JOIN offers o ON o.id = d.offer_id JOIN products p ON p.id = o.product_id WHERE d.channel = 'general' AND d.state = 'sent' AND d.dry_run = 0 AND p.source = 'amazon' AND d.sent_at > ?`)
   const lastGeneral = db.prepare(`SELECT MAX(sent_at) t FROM deliveries WHERE channel = 'general' AND state = 'sent' AND dry_run = 0`)
   const staleGeneral = db.prepare(`SELECT id, offer_id FROM deliveries WHERE channel = 'general' AND state = 'scheduled' AND scheduled_at < ?`)
   const dropGeneral = db.prepare(`UPDATE deliveries SET state = 'cancelled', cancel_reason = 'Dropped: stronger offers took the slot', next_attempt_at = NULL WHERE id = ?`)
@@ -70,7 +71,7 @@ export function createPublisher(deps: PublisherDeps) {
     const attempts = json<Attempt[]>(d.attempts, [])
     let fresh
     try {
-      fresh = await deps.adapters[p.source].product(p.store_key, p.url)
+      fresh = await deps.adapters[p.source].product(p.store_key, p.url, p.category)
     } catch (e) {
       const reason = e instanceof FetchError ? e.message : String(e)
       repo.recordFailure(p.id, now, null, `recheck: ${reason}`)
@@ -103,7 +104,7 @@ export function createPublisher(deps: PublisherDeps) {
     let price = d.posted_price ?? offer.price
 
     // Held, not cancelled: it goes out, rechecked, once Amazon is back on.
-    if (p.source === 'amazon' && amazonPaused()) return
+    if (p.source === 'amazon' && (amazonPaused() || amazonPausedUntil(now))) return
 
     if (amazonPostingOff && p.source === 'amazon' && d.state === 'scheduled') {
       d.state = 'cancelled'
@@ -234,7 +235,12 @@ export function createPublisher(deps: PublisherDeps) {
             }
           }
           const gapOpen = !deps.generalGapMs || now - ((lastGeneral.get() as { t: number | null }).t ?? 0) >= deps.generalGapMs
-          const next = (dueQ.all(now, now) as Due[]).find((x) => !handled.has(x.id) && (gapOpen || x.channel !== 'general'))
+          const due = (dueQ.all(now, now) as Due[]).filter((x) => !handled.has(x.id) && (gapOpen || x.channel !== 'general'))
+          // Noon must not take every public slot: Amazon gets its share first when it has a candidate, and unused slots go to others.
+          const amazonShort = (amazonGeneralLastHour.get(now - 3_600_000) as { n: number }).n < P.generalAmazonPerHour
+          const first = due[0]
+          const next =
+            first?.channel === 'general' && amazonShort ? (due.find((x) => x.channel === 'general' && x.source === 'amazon') ?? first) : first
           if (!next) break
           handled.add(next.id)
           await handle(next, now)

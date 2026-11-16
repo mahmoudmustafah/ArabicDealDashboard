@@ -604,3 +604,19 @@ test('duplicate products merge into one, keeping all history, and cannot come ba
   w.db.exec('CREATE UNIQUE INDEX products_one_per_key ON products (source, store_key)')
   assert.throws(() => insert.run('Other', 'monitors', 1, 1, 1), /UNIQUE/)
 })
+
+test('Amazon gets its share of the public channel when it has a candidate', async () => {
+  const w = world()
+  const add = (source: 'amazon' | 'noon', key: string, price: number) => {
+    const { id } = w.repo.upsertProduct({ source, storeKey: key, name: `Item ${key}`, url: `https://x/${key}`, price, available: true }, 'monitors', w.now)
+    w.repo.recordObservation(id, { source, storeKey: key, name: key, url: 'x', price, listPrice: 1000, available: true }, w.now, null)
+    w.prices.set(key, price)
+    const offerId = w.repo.insertOffer({ product_id: id, detected_at: w.now, price, ref_price: 1000, basis: 'advertised', pct: 100 - price / 10, labels: '[]', priority: 0, decision: 'publish', reason: 'x', status: 'scheduled' })
+    w.repo.insertDelivery(offerId, 'general', w.now, price)
+  }
+  add('noon', 'N1', 400)
+  add('amazon', 'A1', 800)
+  const paced = createPublisher({ db: w.db, repo: w.repo, adapters: w.deps.adapters, now: w.deps.now, send: async (ch, html) => (w.sent.push({ channel: ch, html }), { ok: true, messageId: 1, dryRun: false }), generalGapMs: 6 * MIN, generalDropAfterMs: 10 * MIN })
+  await paced.tick()
+  assert.deepEqual(w.sent.map((s) => /Item (\w+)/.exec(s.html)?.[1]), ['A1'], 'the weaker Amazon deal takes the slot')
+})

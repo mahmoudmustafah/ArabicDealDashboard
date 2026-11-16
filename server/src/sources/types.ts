@@ -40,7 +40,8 @@ export interface SourceAdapter {
   /** Read listing page N (1-based) of a job. Throws FetchError on failure. */
   listingPage(job: JobDef, page: number): Promise<PageResult>
   /** Re-read one known product (revisits and pre-publication rechecks). */
-  product(storeKey: string, url: string): Promise<Listing | null>
+  /** `category` lets a store reread the listing page instead of the product page. */
+  product(storeKey: string, url: string, category?: string): Promise<Listing | null>
 }
 
 export type Fetcher = (url: string, init?: { headers?: Record<string, string> }) => Promise<{ status: number; text: string }>
