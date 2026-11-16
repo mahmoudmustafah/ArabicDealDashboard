@@ -1,0 +1,24 @@
+{
+ "products": [
+  {
+   "id": 9366470328576,
+   "title": "UQAB RIHLA",
+   "handle": "uqab-rihla",
+   "vendor": "Emarati Scents",
+   "images": [
+    {
+     "src": "https://cdn.shopify.com/s/files/1/0731/6396/4672/files/Amaran-Uqab-Rihla-eau-de-parfum-100ml-2.webp?v=1772645899"
+    }
+   ],
+   "variants": [
+    {
+     "id": 48108234440960,
+     "title": "Default Title",
+     "price": "1380.00",
+     "compare_at_price": "1800.00",
+     "available": true
+    }
+   ]
+  }
+ ]
+}

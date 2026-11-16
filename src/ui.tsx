@@ -1,8 +1,10 @@
-import { AlertTriangle, ArrowDown, Clock, HelpCircle, ImageOff, Tag, TrendingDown } from 'lucide-react'
+import { AlertOctagon, AlertTriangle, ArrowDown, Clock, HelpCircle, ImageOff, Loader2, RotateCw, Tag, TrendingDown } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { DealStatus } from './deal'
 import { statusLabel } from './deal'
 import { L } from './i18n'
+import { store } from './deal'
+import type { SourceId } from './api'
 import { price } from './format'
 
 export function cx(...c: (string | false | undefined | null)[]) {
@@ -74,12 +76,12 @@ export function Pct({ n, className }: { n: number; className?: string }) {
   )
 }
 
-export function Thumb({ src, alt, className }: { src?: string; alt: string; className?: string }) {
+export function Thumb({ src, alt, className }: { src?: string | null; alt: string; className?: string }) {
   const [failed, setFailed] = useState(false)
   return (
     <div className={cx('@container relative overflow-hidden bg-thumb', className)}>
       {src && !failed ? (
-        <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className="size-full object-cover" />
+        <img src={src} alt={alt} loading="lazy" onError={() => setFailed(true)} className="size-full bg-white object-contain" />
       ) : (
         <div className="flex size-full flex-col items-center justify-center gap-1 text-mute">
           <ImageOff className="size-5" strokeWidth={1.6} />
@@ -90,16 +92,48 @@ export function Thumb({ src, alt, className }: { src?: string; alt: string; clas
   )
 }
 
-export function SampleTag({ className }: { className?: string }) {
+export function SourceChip({ id }: { id: SourceId }) {
   return (
     <span
       className={cx(
-        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-dashed border-line-strong bg-white px-2 py-0.5 text-[11px] font-semibold text-body',
-        className,
+        'inline-flex shrink-0 items-center rounded px-1.5 py-px text-[10.5px] font-semibold',
+        id === 'noon' ? 'bg-noon-soft text-noon-ink' : id === 'emarati' ? 'bg-emarati-soft text-emarati-ink' : 'bg-adv-soft text-adv',
       )}
     >
-      <span className="size-1.5 rounded-full bg-line-strong" />
-      {L('بيانات تجريبية', 'Sample data')}
+      {store(id).short()}
     </span>
+  )
+}
+
+export function Loading({ label }: { label?: string }) {
+  return (
+    <div role="status" className="flex items-center justify-center gap-2 rounded-2xl border border-line bg-white py-16 text-[13.5px] text-body">
+      <Loader2 className="size-5 animate-spin" />
+      {label ?? L('جاري تحميل البيانات…', 'Loading data…')}
+    </div>
+  )
+}
+
+/** Shown in both languages on purpose: it is the one message that must always be understood. */
+export function ApiDown({ onRetry, compact }: { onRetry?: () => void; compact?: boolean }) {
+  return (
+    <div role="alert" className={cx('flex flex-col gap-3 rounded-2xl border border-fail/25 bg-fail-soft sm:flex-row sm:items-center', compact ? 'p-3' : 'p-5')}>
+      <AlertOctagon className="size-5 shrink-0 text-fail" />
+      <div className="flex-1 text-[13.5px] leading-6">
+        <div lang="ar" dir="rtl" className="font-bold text-fail">مش قادرين نوصل لخدمة رادار العروض — الأسعار مش بتتحدث دلوقتي.</div>
+        <div lang="en" dir="ltr" className="font-bold text-fail">Can't reach the Deal Radar service — prices are not updating right now.</div>
+        {!compact && (
+          <div className="mt-1 text-body">
+            <span lang="ar" dir="rtl" className="block">مفيش بيانات تجريبية بديلة هنا. اتأكد إن الخدمة شغالة وجرّب تاني.</span>
+            <span lang="en" dir="ltr" className="block">No sample data is shown instead. Check that the service is running, then try again.</span>
+          </div>
+        )}
+      </div>
+      {onRetry && (
+        <button onClick={onRetry} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-fail/30 bg-white px-3 text-[13px] font-semibold text-fail">
+          <RotateCw className="size-3.5" /> {L('حاول تاني', 'Try again')}
+        </button>
+      )}
+    </div>
   )
 }

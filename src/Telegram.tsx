@@ -4,322 +4,165 @@ import {
   Ban,
   CheckCheck,
   ChevronDown,
+  CircleSlash,
   Clock,
-  Loader2,
   Megaphone,
   RotateCw,
   Search,
   Send,
+  ShoppingBasket,
   Zap,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import { NOW, products } from './data'
+import { useState } from 'react'
+import { api, useApi, type Delivery, type Meta, type OfferView } from './api'
+import { agoAt, clock, Mm, useNow } from './clock'
+import { store } from './deal'
 import { price } from './format'
-import { agoAt, clock, Mm, SpeedControl, useSimClock } from './sim'
-import { Money, SampleTag, Thumb, cx } from './ui'
-import { L, tx, type T as Tx } from './i18n'
+import { ApiDown, Loading, Money, SourceChip, Thumb, cx } from './ui'
+import { L } from './i18n'
 
-// SAMPLE DATA — simulated automatic Telegram posts. Nothing here is published by hand.
-const S = 1000
-const M = 60 * S
-export const GENERAL_DELAY = 5 * M
-export const PRIORITY_THRESHOLD = 50
-
-type Store = 'Amazon Egypt' | 'Noon Egypt' | 'Emarati Scents'
-type Attempt = { at: number; ok: boolean; error?: Tx }
-type Delivery = { scheduledAt: number; attempts: Attempt[]; cancelledAt?: number; cancelReason?: Tx; msgId?: number }
-type Post = {
-  id: string
-  name: Tx
-  store: Store
-  image?: string
-  price: number
-  was: number
-  discountPct: number
-  discountKind: 'advertised' | 'observed'
-  exceptional?: boolean
-  discoveredAt: number
-  priority?: Delivery
-  general: Delivery
-}
-
-const RATE: Tx = { ar: 'تليجرام طلب تهدئة الإرسال (429)', en: 'Telegram rate limit (429)' }
-const TIMEOUT: Tx = { ar: 'انتهت مهلة الاتصال بتليجرام', en: 'Telegram connection timed out' }
-const kindLabel = (k: Post['discountKind']) => (k === 'observed' ? L('مرصود', 'observed') : L('معلن', 'advertised'))
+const PRIORITY_THRESHOLD = 50
 
 const channels = {
-  priority: { name: { ar: 'رادار العروض — أولوية', en: 'Deal Radar — Priority' } as Tx, handle: '@DealRadarPriority', members: 2140 },
-  general: { name: { ar: 'رادار العروض', en: 'Deal Radar' } as Tx, handle: '@DealRadarEG', members: 18630 },
+  priority: () => L('الشات الخاص — أولوية', 'Private chat — priority'),
+  general: () => L('القناة العامة', 'General channel'),
+  supermarket: () => L('قناة السوبرماركت', 'Supermarket channel'),
 }
 
-const img = (id: string) => products.find((p) => p.id === id)?.image
-
-type Seed = Omit<Post, 'priority' | 'general'> & {
-  override?: { priority?: Partial<Delivery>; general?: Partial<Delivery> }
-}
-
-let msg = 4810
-function build(p: Seed): Post {
-  const isPriority = p.discountPct > PRIORITY_THRESHOLD || !!p.exceptional
-  const d = p.discoveredAt
-  const priority: Delivery | undefined = isPriority
-    ? { scheduledAt: d, attempts: [{ at: d + 7 * S, ok: true }], msgId: msg++, ...p.override?.priority }
-    : undefined
-  const gAt = isPriority ? d + GENERAL_DELAY : d
-  const general: Delivery = { scheduledAt: gAt, attempts: [{ at: gAt + 6 * S, ok: true }], msgId: msg++, ...p.override?.general }
-  return { ...p, priority, general }
-}
-
-const seeds: Seed[] = [
-  // appear live while the page is open
-  { id: 'p13', name: { ar: 'سماعة سوني WH-CH720N لاسلكية', en: 'Sony WH-CH720N wireless headphones' }, store: 'Noon Egypt', price: 2899, was: 6299, discountPct: 54, discountKind: 'advertised', discoveredAt: NOW + 1.5 * M },
-  { id: 'p14', name: { ar: 'كيبورد ريدراجون K552', en: 'Redragon K552 keyboard' }, store: 'Amazon Egypt', image: img('redragon-k552'), price: 1149, was: 1299, discountPct: 12, discountKind: 'observed', discoveredAt: NOW + 4 * M },
-  // within the 5-minute delay
-  { id: 'p1', name: { ar: 'عود ملكي — 100 مل', en: 'Royal Oud — 100 ml' }, store: 'Emarati Scents', price: 1350, was: 3400, discountPct: 60, discountKind: 'advertised', discoveredAt: NOW - 0.6 * M },
-  {
-    id: 'p2',
-    name: { ar: 'شاشة شاومي A27i مقاس 27″', en: 'Xiaomi A27i 27″ monitor' },
-    store: 'Amazon Egypt',
-    image: img('xiaomi-a27i'),
-    price: 2999,
-    was: 5999,
-    discountPct: 50,
-    discountKind: 'observed',
-    exceptional: true,
-    discoveredAt: NOW - 2.2 * M,
-  },
-  {
-    id: 'p3',
-    name: { ar: 'كيبورد لوجيتك MX Keys S', en: 'Logitech MX Keys S keyboard' },
-    store: 'Amazon Egypt',
-    image: img('mx-keys-s'),
-    price: 4799,
-    was: 5299,
-    discountPct: 9,
-    discountKind: 'observed',
-    discoveredAt: NOW - 3 * M,
-    override: {
-      general: {
-        scheduledAt: NOW - 3 * M,
-        attempts: [
-          { at: NOW - 3 * M + 5 * S, ok: false, error: RATE },
-          { at: NOW + 0.8 * M, ok: true },
-        ],
-      },
-    },
-  },
-  // completed
-  { id: 'p4', name: { ar: 'سامسونج جالاكسي A55 — 256 جيجا', en: 'Samsung Galaxy A55 — 256 GB' }, store: 'Noon Egypt', price: 9499, was: 20999, discountPct: 55, discountKind: 'advertised', discoveredAt: NOW - 7 * M },
-  { id: 'p5', name: { ar: 'شاشة سامسونج أوديسي G5 مقاس 27″', en: 'Samsung Odyssey G5 27″ monitor' }, store: 'Amazon Egypt', image: img('odyssey-g5'), price: 11999, was: 14999, discountPct: 20, discountKind: 'observed', discoveredAt: NOW - 15 * M },
-  { id: 'p6', name: { ar: 'تلفزيون LG ‏55 بوصة 4K UHD', en: 'LG 55-inch 4K UHD TV' }, store: 'Noon Egypt', price: 15999, was: 20499, discountPct: 22, discountKind: 'observed', discoveredAt: NOW - 22 * M },
-  {
-    id: 'p7',
-    name: { ar: 'تلفزيون شاومي A Pro ‏43 بوصة', en: 'Xiaomi A Pro 43-inch TV' },
-    store: 'Noon Egypt',
-    price: 4499,
-    was: 8999,
-    discountPct: 50,
-    discountKind: 'observed',
-    exceptional: true,
-    discoveredAt: NOW - 27 * M,
-    override: {
-      general: {
-        cancelledAt: NOW - 24 * M,
-        cancelReason: {
-          ar: 'السعر رجع 8,999 ج.م قبل ميعاد القناة العامة — اتلغى النشر',
-          en: 'Price went back to EGP 8,999 before the general slot — post cancelled',
-        },
-        attempts: [],
-      },
-    },
-  },
-  {
-    id: 'p8',
-    name: { ar: 'سماعة JBL Tune 520BT', en: 'JBL Tune 520BT headphones' },
-    store: 'Amazon Egypt',
-    image: img('jbl-tune-520'),
-    price: 1899,
-    was: 2199,
-    discountPct: 14,
-    discountKind: 'observed',
-    discoveredAt: NOW - 34 * M,
-    override: {
-      general: {
-        attempts: [
-          { at: NOW - 34 * M + 5 * S, ok: false, error: RATE },
-          { at: NOW - 33 * M, ok: true },
-        ],
-      },
-    },
-  },
-  { id: 'p9', name: { ar: 'طقم بخور إماراتي فاخر', en: 'Luxury Emirati bakhoor set' }, store: 'Emarati Scents', price: 780, was: 1200, discountPct: 35, discountKind: 'advertised', discoveredAt: NOW - 41 * M },
-  { id: 'p10', name: { ar: 'شاشة هواوي MateView SE ‏23.8″', en: 'Huawei MateView SE 23.8″ monitor' }, store: 'Amazon Egypt', image: img('huawei-mateview-se'), price: 3099, was: 5999, discountPct: 48, discountKind: 'advertised', discoveredAt: NOW - 55 * M },
-  { id: 'p11', name: { ar: 'آيفون 15 — 128 جيجا', en: 'iPhone 15 — 128 GB' }, store: 'Noon Egypt', price: 32999, was: 55999, discountPct: 41, discountKind: 'observed', exceptional: true, discoveredAt: NOW - 68 * M },
-  {
-    id: 'p12',
-    name: { ar: 'سيروم فيتامين سي 30 مل', en: 'Vitamin C serum 30 ml' },
-    store: 'Noon Egypt',
-    price: 499,
-    was: 715,
-    discountPct: 30,
-    discountKind: 'advertised',
-    discoveredAt: NOW - 80 * M,
-    override: {
-      general: {
-        attempts: [
-          { at: NOW - 80 * M + 5 * S, ok: false, error: TIMEOUT },
-          { at: NOW - 79 * M, ok: false, error: TIMEOUT },
-          { at: NOW - 77 * M, ok: false, error: TIMEOUT },
-        ],
-      },
-    },
-  },
-]
-const posts = seeds.map(build)
-
-type DState =
-  | { k: 'scheduled'; at: number }
-  | { k: 'sending' }
-  | { k: 'sent'; at: number; retried: boolean }
-  | { k: 'retrying'; at: number; error?: string }
-  | { k: 'failed'; error?: string; tries: number }
-  | { k: 'cancelled'; reason?: string; at: number }
-
-function dstate(d: Delivery, t: number): DState {
-  if (d.cancelledAt !== undefined && t >= d.cancelledAt) return { k: 'cancelled', reason: d.cancelReason && tx(d.cancelReason), at: d.cancelledAt }
-  if (t < d.scheduledAt) return { k: 'scheduled', at: d.scheduledAt }
-  const done = d.attempts.filter((a) => a.at <= t)
-  const last = done[done.length - 1]
-  if (!last) return d.attempts.length ? { k: 'sending' } : { k: 'scheduled', at: d.cancelledAt ?? d.scheduledAt }
-  if (last.ok) return { k: 'sent', at: last.at, retried: done.length > 1 }
-  const next = d.attempts.find((a) => a.at > t)
-  return next
-    ? { k: 'retrying', at: next.at, error: last.error && tx(last.error) }
-    : { k: 'failed', error: last.error && tx(last.error), tries: done.length }
-}
+const of = (p: OfferView, ch: Delivery['channel']) => p.deliveries.find((d) => d.channel === ch)
+/** A dry run was recorded but never sent, so it must never count or display as posted. */
+const reallySent = (d?: Delivery) => d?.state === 'sent' && !d.dryRun
+const isDry = (d?: Delivery) => d?.state === 'sent' && d.dryRun
 
 function DeliveryCell({ d, t, compact }: { d?: Delivery; t: number; compact?: boolean }) {
-  if (!d)
-    return (
-      <span className="inline-flex items-center gap-1 text-[12px] text-mute">
-        — {L('مش مطلوب', 'Not required')}
-      </span>
-    )
-  const s = dstate(d, t)
+  if (!d) return <span className="inline-flex items-center gap-1 text-[12px] text-mute">— {L('مش مطلوب', 'Not required')}</span>
   const pill = 'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap'
+  const lastError = [...d.attempts].reverse().find((a) => !a.ok)?.error
   return (
     <div className="flex flex-col items-start gap-0.5">
-      {s.k === 'sent' && (
+      {reallySent(d) && (
         <>
           <span className={cx(pill, 'bg-drop-soft text-drop')}>
             <CheckCheck className="size-3.5" /> {L('اتنشر', 'Posted')}
           </span>
-          <span className="num text-[11.5px] text-mute">
-            {clock(s.at)}
-            {s.retried && L(' · بعد إعادة محاولة', ' · after retry')}
-          </span>
+          {d.sentAt && (
+            <span className="num text-[11.5px] text-mute">
+              {clock(d.sentAt)}
+              {d.attempts.filter((a) => !a.recheck).length > 1 && L(' · بعد إعادة محاولة', ' · after retry')}
+            </span>
+          )}
         </>
       )}
-      {s.k === 'scheduled' && (
+      {isDry(d) && (
+        <>
+          <span className={cx(pill, 'border border-dashed border-line-strong bg-white text-body')}>
+            <CircleSlash className="size-3.5" /> {L('ما اتبعتش (تجربة)', 'Not sent (dry run)')}
+          </span>
+          {!compact && <span className="text-[11.5px] text-mute">{L('الوجهة دي مش متوصلة وقت الإرسال', 'This destination was not connected at the time')}</span>}
+        </>
+      )}
+      {d.state === 'scheduled' && (
         <>
           <span className={cx(pill, 'bg-pending-soft text-pending')}>
-            <Clock className="size-3.5" /> {L('هيتنشر بعد', 'Posts in')} <Mm ms={s.at - t} />
+            <Clock className="size-3.5" />
+            {d.scheduledAt > t ? (
+              <>
+                {L('هيتنشر بعد', 'Posts in')} <Mm ms={d.scheduledAt - t} />
+              </>
+            ) : (
+              L('مستني دوره', 'Waiting its turn')
+            )}
           </span>
-          {!compact && <span className="num text-[11.5px] text-mute">
-              {L('الساعة', 'at')} {clock(s.at)}
-            </span>}
+          {!compact && d.scheduledAt > t && (
+            <span className="num text-[11.5px] text-mute">
+              {L('الساعة', 'at')} {clock(d.scheduledAt)}
+            </span>
+          )}
         </>
       )}
-      {s.k === 'sending' && (
-        <span className={cx(pill, 'bg-ink text-white')}>
-          <Loader2 className="size-3.5 animate-spin" /> {L('جاري الإرسال', 'Sending')}
-        </span>
-      )}
-      {s.k === 'retrying' && (
+      {d.state === 'retrying' && (
         <>
           <span className={cx(pill, 'bg-fail-soft text-fail')}>
-            <RotateCw className="size-3.5" /> {L('إعادة تلقائية بعد', 'Auto-retry in')} <Mm ms={s.at - t} />
+            <RotateCw className="size-3.5" /> {L('إعادة تلقائية', 'Auto-retry')}
+            {d.nextAttemptAt && d.nextAttemptAt > t && (
+              <>
+                {' '}
+                {L('بعد', 'in')} <Mm ms={d.nextAttemptAt - t} />
+              </>
+            )}
           </span>
-          {!compact && <span className="text-[11.5px] text-mute">{s.error}</span>}
+          {!compact && lastError && <span className="text-[11.5px] text-mute">{lastError}</span>}
         </>
       )}
-      {s.k === 'failed' && (
+      {d.state === 'failed' && (
         <>
           <span className={cx(pill, 'bg-fail text-white')}>
             <AlertOctagon className="size-3.5" /> {L('فشل', 'Failed')}
           </span>
           {!compact && (
             <span className="text-[11.5px] text-mute">
-              <span className="num">{s.tries}</span> {L('محاولات', 'attempts')} · {s.error}
+              <span className="num">{d.attempts.length}</span> {L('محاولات', 'attempts')}
+              {lastError && ` · ${lastError}`}
             </span>
           )}
         </>
       )}
-      {s.k === 'cancelled' && (
+      {d.state === 'cancelled' && (
         <>
           <span className={cx(pill, 'bg-adv-soft text-adv')}>
             <Ban className="size-3.5" /> {L('اتلغى', 'Cancelled')}
           </span>
-          {!compact && <span className="text-[11.5px] text-mute">{L('السعر رجع قبل الميعاد', 'Price reverted before slot')}</span>}
+          {!compact && d.cancelReason && <span className="text-[11.5px] text-mute">{d.cancelReason}</span>}
         </>
       )}
     </div>
   )
 }
 
-type Filter = 'all' | 'priority' | 'general' | 'waiting' | 'issues'
+type Filter = 'all' | 'priority' | 'general' | 'supermarket' | 'waiting' | 'dry' | 'issues'
 
-export function Telegram() {
-  const [speed, setSpeed] = useState(1)
-  const t = useSimClock(speed)
+export function Telegram({ info, openProduct }: { info?: Meta; openProduct: (id: number) => void }) {
+  const q0 = useApi(() => api.posts(200), 15_000)
+  const t = useNow()
   const [filter, setFilter] = useState<Filter>('all')
   const [q, setQ] = useState('')
-  const [openId, setOpenId] = useState<string | null>('p2')
+  const [openId, setOpenId] = useState<number | null>(null)
+  if (!q0.data) return q0.error ? <ApiDown onRetry={q0.reload} /> : <Loading />
 
-  const visible = useMemo(() => posts.filter((p) => p.discoveredAt <= t).sort((a, b) => b.discoveredAt - a.discoveredAt), [t])
-  const st = (p: Post) => ({ pr: p.priority && dstate(p.priority, t), ge: dstate(p.general, t) })
-  const isWaiting = (p: Post) => st(p).ge.k === 'scheduled'
-  const hasIssue = (p: Post) => ['retrying', 'failed'].includes(st(p).ge.k) || ['retrying', 'failed'].includes(st(p).pr?.k ?? '')
-
+  const visible = q0.data
+  const isWaiting = (p: OfferView) => p.deliveries.some((d) => d.state === 'scheduled')
+  const hasIssue = (p: OfferView) => p.deliveries.some((d) => d.state === 'retrying' || d.state === 'failed')
+  const isCancelled = (p: OfferView) => p.deliveries.some((d) => d.state === 'cancelled')
+  const anyDry = (p: OfferView) => p.deliveries.some(isDry)
+  const text = q.trim().toLowerCase()
   const list = visible.filter((p) => {
-    if (q && !tx(p.name).toLowerCase().includes(q.trim().toLowerCase())) return false
-    if (filter === 'priority') return !!p.priority
-    if (filter === 'general') return !p.priority
+    if (text && !(p.name ?? '').toLowerCase().includes(text)) return false
+    if (filter === 'priority') return !!of(p, 'priority')
+    if (filter === 'general') return !!of(p, 'general') && !of(p, 'priority')
+    if (filter === 'supermarket') return !!of(p, 'supermarket')
     if (filter === 'waiting') return isWaiting(p)
-    if (filter === 'issues') return hasIssue(p) || st(p).ge.k === 'cancelled'
+    if (filter === 'dry') return anyDry(p)
+    if (filter === 'issues') return hasIssue(p) || isCancelled(p)
     return true
   })
-
-  const sentTo = (ch: 'priority' | 'general') =>
-    visible.filter((p) => {
-      const d = ch === 'priority' ? p.priority : p.general
-      return d && dstate(d, t).k === 'sent'
-    })
-  const lastSent = (ch: 'priority' | 'general') =>
-    sentTo(ch)
-      .map((p) => ({ p, at: (dstate(ch === 'priority' ? p.priority! : p.general, t) as { at: number }).at }))
-      .sort((a, b) => b.at - a.at)[0]
+  const sentTo = (ch: Delivery['channel']) =>
+    visible
+      .filter((p) => reallySent(of(p, ch)))
+      .map((p) => ({ p, at: of(p, ch)!.sentAt ?? 0 }))
+      .sort((a, b) => b.at - a.at)
   const waiting = visible.filter(isWaiting)
-  const nextGeneral = [...waiting].sort((a, b) => a.general.scheduledAt - b.general.scheduledAt)[0]
   const issues = visible.filter(hasIssue).length
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-[13px] text-body">
-          <span className="relative flex size-2.5">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-drop opacity-60" />
-            <span className="relative inline-flex size-2.5 rounded-full bg-drop" />
-          </span>
-          {L('النشر تلقائي · الساعة', 'Automatic posting ·')} <b className="num text-ink">{clock(t)}</b>
-          <span className="hidden text-mute @xl:inline">
-            {L('· الصفحة دي للمتابعة بس، مفيش نشر يدوي', '· this page is for tracking only — no manual posting')}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <SpeedControl speed={speed} setSpeed={setSpeed} />
-          <SampleTag />
-        </div>
+      {q0.error && <ApiDown compact onRetry={q0.reload} />}
+      <div className="flex items-center gap-2 text-[13px] text-body">
+        <span className="relative flex size-2.5">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-drop opacity-60" />
+          <span className="relative inline-flex size-2.5 rounded-full bg-drop" />
+        </span>
+        {L('النشر تلقائي · الساعة', 'Automatic posting ·')} <b className="num text-ink">{clock(t)}</b>
+        <span className="hidden text-mute @xl:inline">{L('· الصفحة دي للمتابعة بس، مفيش نشر يدوي', '· this page is for tracking only — no manual posting')}</span>
       </div>
 
       {/* routing rules */}
@@ -329,7 +172,7 @@ export function Telegram() {
           <div className="rounded-xl bg-canvas p-3 text-[12.5px] leading-5">
             <div className="font-semibold">{L('عرض جديد اتلقى', 'New offer found')}</div>
             <div className="text-body">
-              {L('هل الخصم أكبر من', 'Is the discount over')} <span className="num">{PRIORITY_THRESHOLD}%</span>{' '}
+              {L('هل الخصم', 'Is the discount')} <span className="num">{PRIORITY_THRESHOLD}%</span> {L('أو أكتر', 'or more')}{' '}
               {L('أو النزول استثنائي؟', 'or the drop exceptional?')}
             </div>
           </div>
@@ -338,7 +181,7 @@ export function Telegram() {
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-pending-line bg-pending-soft/60 p-2.5 text-[12.5px]">
               <span className="rounded bg-white px-1.5 font-semibold text-pending">{L('أيوه', 'Yes')}</span>
               <span className="inline-flex items-center gap-1 font-semibold">
-                <Zap className="size-3.5 text-pending" /> {L('قناة الأولوية فورًا', 'Priority channel immediately')}
+                <Zap className="size-3.5 text-pending" /> {L('الشات الخاص فورًا', 'Private priority chat immediately')}
               </span>
               <ArrowLeft className="size-3.5 text-mute ltr:rotate-180" />
               <span className="text-body">
@@ -366,57 +209,37 @@ export function Telegram() {
       </section>
 
       {/* channels */}
-      <section className="grid gap-3 @3xl:grid-cols-2">
-        {(['priority', 'general'] as const).map((ch) => {
-          const c = channels[ch]
-          const last = lastSent(ch)
-          const count = sentTo(ch).length
+      <section className="grid gap-3 @3xl:grid-cols-3">
+        {(['priority', 'general', 'supermarket'] as const).map((ch) => {
+          const sent = sentTo(ch)
+          const last = sent[0]
+          const dry = visible.filter((p) => isDry(of(p, ch))).length
+          const connected = info?.telegram[ch]
           return (
             <div key={ch} className={cx('rounded-2xl border bg-white p-4', ch === 'priority' ? 'border-pending-line' : 'border-line')}>
               <div className="flex items-center gap-3">
-                <div
-                  className={cx(
-                    'grid size-10 place-items-center rounded-xl',
-                    ch === 'priority' ? 'bg-pending-soft text-pending' : 'bg-canvas text-ink',
-                  )}
-                >
-                  {ch === 'priority' ? <Zap className="size-5" /> : <Megaphone className="size-5" />}
+                <div className={cx('grid size-10 place-items-center rounded-xl', ch === 'priority' ? 'bg-pending-soft text-pending' : 'bg-canvas text-ink')}>
+                  {ch === 'priority' ? <Zap className="size-5" /> : ch === 'supermarket' ? <ShoppingBasket className="size-5" /> : <Megaphone className="size-5" />}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[15px] font-bold">{tx(c.name)}</div>
-                  <div className="text-[12px] text-mute">
-                    <bdi dir="ltr">{c.handle}</bdi> · <span className="num">{c.members.toLocaleString('en-US')}</span>{' '}
-                    {L('مشترك', 'subscribers')}
-                  </div>
-                </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-drop-soft px-2 py-0.5 text-[12px] font-semibold text-drop">
-                  <span className="size-1.5 rounded-full bg-drop" /> {L('متصل', 'Connected')}
-                </span>
+                <div className="min-w-0 flex-1 truncate text-[15px] font-bold">{channels[ch]()}</div>
+                {connected ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-drop-soft px-2 py-0.5 text-[12px] font-semibold text-drop">
+                    <span className="size-1.5 rounded-full bg-drop" /> {L('متصل', 'Connected')}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-line-strong px-2 py-0.5 text-[12px] font-semibold text-body">
+                    <CircleSlash className="size-3.5" /> {L('مش متصل — تجربة بس', 'Not connected — dry run only')}
+                  </span>
+                )}
               </div>
               <div className="mt-4 grid grid-cols-3 gap-2">
-                <ChStat label={L('اتنشر النهارده', 'Posted today')} value={String(count)} />
+                <ChStat label={L('اتنشر فعلًا', 'Actually posted')} value={String(sent.length)} sub={L(`من آخر ${visible.length} عرض`, `of the last ${visible.length} offers`)} />
                 <ChStat label={L('آخر نشر', 'Last post')} value={last ? clock(last.at) : '—'} sub={last ? agoAt(t, last.at) : ''} />
-                {ch === 'general' ? (
-                  <ChStat
-                    label={L('مستني الـ 5 دقائق', 'In 5-min delay')}
-                    value={String(waiting.length)}
-                    sub={
-                      nextGeneral
-                        ? `${L('الجاي بعد', 'next in')} ${mm(nextGeneral.general.scheduledAt - t)}`
-                        : L('مفيش', 'None')
-                    }
-                  />
-                ) : (
-                  <ChStat
-                    label={L('العتبة', 'Threshold')}
-                    value={`+${PRIORITY_THRESHOLD}%`}
-                    sub={L('أو نزول استثنائي', 'or exceptional drop')}
-                  />
-                )}
+                <ChStat label={L('ما اتبعتش (تجربة)', 'Not sent (dry run)')} value={String(dry)} sub={L('مش محسوبة كنشر', 'Not counted as posted')} />
               </div>
               {last && (
                 <div className="mt-3 truncate rounded-lg bg-canvas/70 px-3 py-2 text-[12px] text-body">
-                  {L('آخر رسالة:', 'Last message:')} <b className="text-ink">{tx(last.p.name)}</b>
+                  {L('آخر رسالة:', 'Last message:')} <b className="text-ink">{last.p.name}</b>
                 </div>
               )}
             </div>
@@ -430,20 +253,18 @@ export function Telegram() {
           {(
             [
               ['all', L('كل العروض', 'All offers'), visible.length],
-              ['priority', L('اتبعتت للأولوية', 'Sent to priority'), visible.filter((p) => p.priority).length],
-              ['general', L('العامة بس', 'General only'), visible.filter((p) => !p.priority).length],
-              ['waiting', L('مستنية القناة العامة', 'Waiting for general'), waiting.length],
-              ['issues', L('فشل أو اتلغى', 'Failed or cancelled'), visible.filter((p) => hasIssue(p) || st(p).ge.k === 'cancelled').length],
+              ['priority', L('أولوية', 'Priority'), visible.filter((p) => of(p, 'priority')).length],
+              ['general', L('العامة بس', 'General only'), visible.filter((p) => of(p, 'general') && !of(p, 'priority')).length],
+              ['supermarket', L('السوبرماركت', 'Supermarket'), visible.filter((p) => of(p, 'supermarket')).length],
+              ['waiting', L('مستنية', 'Waiting'), waiting.length],
+              ['dry', L('تجربة', 'Dry run'), visible.filter(anyDry).length],
+              ['issues', L('فشل أو اتلغى', 'Failed or cancelled'), visible.filter((p) => hasIssue(p) || isCancelled(p)).length],
             ] as [Filter, string, number][]
           ).map(([k, l, n]) => (
             <button
               key={k}
               onClick={() => setFilter(k)}
-              className={cx(
-                'flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold',
-                filter === k ? 'border-ink bg-ink text-white' : 'border-line bg-white',
-                k === 'issues' && n > 0 && filter !== k && 'text-fail',
-              )}
+              className={cx('flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[13px] font-semibold', filter === k ? 'border-ink bg-ink text-white' : 'border-line bg-white', k === 'issues' && n > 0 && filter !== k && 'text-fail')}
             >
               {l}
               <span className={cx('num text-[11.5px]', filter === k ? 'text-white/60' : 'text-mute')}>{n}</span>
@@ -466,42 +287,42 @@ export function Telegram() {
         <div className="flex items-center gap-2 rounded-xl bg-fail-soft px-3.5 py-2.5 text-[12.5px] text-fail">
           <AlertOctagon className="size-4 shrink-0" />
           <span>
-            <span className="num font-bold">{issues}</span>{' '}
-            {L('رسالة فيها مشكلة في الإرسال — النظام بيعيد المحاولة تلقائيًا.', 'messages had send problems — retrying automatically.')}
+            <span className="num font-bold">{issues}</span> {L('رسالة فيها مشكلة في الإرسال.', 'messages have send problems.')}
           </span>
         </div>
       )}
 
       {/* log */}
       <section className="overflow-hidden rounded-2xl border border-line bg-white">
-        <div className="hidden grid-cols-[minmax(0,2.2fr)_1fr_1.1fr_1.1fr_28px] gap-3 border-b border-line bg-canvas/70 px-4 py-2.5 text-[12px] font-semibold text-body @4xl:grid">
+        <div className="hidden grid-cols-[minmax(0,2.2fr)_1fr_1.1fr_1.1fr_1.1fr_28px] gap-3 border-b border-line bg-canvas/70 px-4 py-2.5 text-[12px] font-semibold text-body @4xl:grid">
           <span>{L('العرض', 'Offer')}</span>
           <span>{L('سبب التوجيه', 'Routing reason')}</span>
           <span className="flex items-center gap-1">
-            <Zap className="size-3.5 text-pending" /> {L('قناة الأولوية', 'Priority channel')}
+            <Zap className="size-3.5 text-pending" /> {L('الأولوية', 'Priority')}
           </span>
           <span className="flex items-center gap-1">
             <Megaphone className="size-3.5" /> {L('القناة العامة', 'General channel')}
+          </span>
+          <span className="flex items-center gap-1">
+            <ShoppingBasket className="size-3.5" /> {L('السوبرماركت', 'Supermarket')}
           </span>
           <span />
         </div>
         {list.map((p) => {
           const open = openId === p.id
-          const isNew = t - p.discoveredAt < 20 * S
           return (
-            <div key={p.id} className={cx('border-t border-line first:border-t-0', isNew && 'anim-fade bg-drop-soft/30')}>
+            <div key={p.id} className="border-t border-line first:border-t-0">
               <button
                 onClick={() => setOpenId(open ? null : p.id)}
                 aria-expanded={open}
-                className="grid w-full grid-cols-[1fr_auto] gap-3 px-4 py-3 text-start hover:bg-canvas/40 @4xl:grid-cols-[minmax(0,2.2fr)_1fr_1.1fr_1.1fr_28px] @4xl:items-center"
+                className="grid w-full grid-cols-[1fr_auto] gap-3 px-4 py-3 text-start hover:bg-canvas/40 @4xl:grid-cols-[minmax(0,2.2fr)_1fr_1.1fr_1.1fr_1.1fr_28px] @4xl:items-center"
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <Thumb src={p.image} alt={tx(p.name)} className="size-11 shrink-0 rounded-lg" />
+                  <Thumb src={p.image} alt={p.name ?? ''} className="size-11 shrink-0 rounded-lg" />
                   <div className="min-w-0">
-                    <div className="truncate text-[13.5px] font-semibold">{tx(p.name)}</div>
-                    <div className="flex items-center gap-1.5 text-[11.5px] text-mute">
-                      <bdi dir="ltr">{p.store}</bdi> · <Money n={p.price} className="text-[12px] font-semibold text-ink" /> ·
-                      {L('اتلقى', 'found')} {agoAt(t, p.discoveredAt)}
+                    <div className="truncate text-[13.5px] font-semibold">{p.name}</div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-mute">
+                      {p.source && <SourceChip id={p.source} />} <Money n={p.price} className="text-[12px] font-semibold text-ink" /> · {L('اتلقى', 'found')} {agoAt(t, p.detectedAt)}
                     </div>
                   </div>
                 </div>
@@ -509,142 +330,105 @@ export function Telegram() {
                 <div className="col-span-2 @4xl:col-span-1">
                   <Reason p={p} />
                 </div>
-                <div className="col-span-2 grid grid-cols-2 gap-2 @4xl:contents">
+                <div className="col-span-2 grid grid-cols-3 gap-2 @4xl:contents">
                   <div>
-                    <div className="mb-1 text-[11px] text-mute @4xl:hidden">{L('قناة الأولوية', 'Priority channel')}</div>
-                    <DeliveryCell d={p.priority} t={t} compact />
+                    <div className="mb-1 text-[11px] text-mute @4xl:hidden">{L('الأولوية', 'Priority')}</div>
+                    <DeliveryCell d={of(p, 'priority')} t={t} compact />
                   </div>
                   <div>
                     <div className="mb-1 text-[11px] text-mute @4xl:hidden">{L('القناة العامة', 'General channel')}</div>
-                    <DeliveryCell d={p.general} t={t} compact />
+                    <DeliveryCell d={of(p, 'general')} t={t} compact />
+                  </div>
+                  <div>
+                    <div className="mb-1 text-[11px] text-mute @4xl:hidden">{L('السوبرماركت', 'Supermarket')}</div>
+                    <DeliveryCell d={of(p, 'supermarket')} t={t} compact />
                   </div>
                 </div>
               </button>
-              {open && <PostDetail p={p} t={t} />}
+              {open && <PostDetail p={p} t={t} openProduct={openProduct} />}
             </div>
           )
         })}
-        {!list.length && <div className="py-12 text-center text-[13px] text-body">{L('مفيش رسايل بالفلتر ده', 'No messages match this filter')}</div>}
+        {!list.length && (
+          <div className="py-12 text-center text-[13px] text-body">
+            {visible.length ? L('مفيش رسايل بالفلتر ده', 'No messages match this filter') : L('لسه مفيش عروض مؤهلة للنشر', 'No offers have qualified for posting yet')}
+          </div>
+        )}
       </section>
     </div>
   )
 }
 
-const mm = (ms: number) => {
-  const s = Math.max(0, Math.round(ms / 1000))
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
-}
+const basisLabel = (p: OfferView) => (p.basis === 'observed' ? L('مرصود', 'observed') : p.basis === 'below_usual' ? L('أقل من المعتاد', 'below usual') : L('معلن', 'advertised'))
 
-function Reason({ p }: { p: Post }) {
-  if (p.exceptional)
+function Reason({ p }: { p: OfferView }) {
+  const pct = <span className="num">{Math.round(p.pct)}%</span>
+  if (p.labels.includes('exceptional'))
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-pending-soft px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap text-pending ring-1 ring-inset ring-pending-line">
-        <Zap className="size-3.5" /> {L('استثنائي', 'Exceptional')} <span className="num">{p.discountPct}%</span>
+        <Zap className="size-3.5" /> {L('استثنائي', 'Exceptional')} {pct}
       </span>
     )
-  if (p.discountPct > PRIORITY_THRESHOLD)
+  if (p.priority)
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-pending-soft px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap text-pending ring-1 ring-inset ring-pending-line">
-        <Zap className="size-3.5" /> {L(`خصم ${kindLabel(p.discountKind)}`, `${p.discountKind === 'observed' ? 'Observed' : 'Advertised'} discount`)} <span className="num">{p.discountPct}%</span>
+        <Zap className="size-3.5" /> {L('خصم', 'Discount')} {basisLabel(p)} {pct}
       </span>
     )
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-adv-soft px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap text-adv">
-      {L('عادي', 'Regular')} · {kindLabel(p.discountKind)} <span className="num">{p.discountPct}%</span>
+      {L('عادي', 'Regular')} · {basisLabel(p)} {pct}
     </span>
   )
 }
 
-function PostDetail({ p, t }: { p: Post; t: number }) {
-  const steps: { label: string; at?: number; state: 'done' | 'next' | 'bad' | 'skip'; note?: string }[] = []
-  steps.push({ label: L('اتلقى العرض', 'Offer found'), at: p.discoveredAt, state: 'done' })
-  const push = (label: string, d: Delivery) => {
-    const s = dstate(d, t)
-    d.attempts
-      .filter((a) => a.at <= t && !a.ok)
-      .forEach((a) => steps.push({
-          label: `${label} — ${L('محاولة فشلت', 'attempt failed')}`,
-          at: a.at,
-          state: 'bad',
-          note: a.error && tx(a.error),
-        }),
-      )
-    if (s.k === 'sent') steps.push({ label: `${L('اتنشر في', 'Posted to')} ${label}`, at: s.at, state: 'done' })
-    else if (s.k === 'scheduled') steps.push({ label: `${L('هيتنشر في', 'Will post to')} ${label}`, at: s.at, state: 'next' })
-    else if (s.k === 'retrying') steps.push({ label: `${L('إعادة محاولة تلقائية في', 'Auto-retry to')} ${label}`, at: s.at, state: 'next' })
-    else if (s.k === 'failed') steps.push({
-        label: `${L('فشل النشر في', 'Failed to post to')} ${label}`,
-        state: 'bad',
-        note: L('وقف بعد آخر محاولة', 'Stopped after last attempt'),
-      })
-    else if (s.k === 'cancelled') steps.push({ label: `${L('اتلغى النشر في', 'Cancelled post to')} ${label}`, at: s.at, state: 'skip', note: s.reason })
-    else steps.push({ label: `${L('جاري الإرسال لـ', 'Sending to')} ${label}`, state: 'next' })
-  }
-  if (p.priority) push(L('قناة الأولوية', 'priority channel'), p.priority)
-  push(L('القناة العامة', 'general channel'), p.general)
-  const ge = dstate(p.general, t)
-
+function PostDetail({ p, t, openProduct }: { p: OfferView; t: number; openProduct: (id: number) => void }) {
   return (
     <div className="anim-fade grid gap-4 border-t border-dashed border-line bg-canvas/40 px-4 py-4 @3xl:grid-cols-2">
       <div>
         <div className="text-[12px] font-semibold text-body">{L('مسار الرسالة', 'Message timeline')}</div>
-        <ol className="mt-2 flex flex-col">
-          {steps.map((s, i) => (
-            <li key={i} className="relative flex gap-3 pb-3 last:pb-0">
-              {i < steps.length - 1 && <span className="absolute start-[5px] top-3 h-full w-px bg-line" />}
-              <span
-                className={cx(
-                  'relative mt-1 size-[11px] shrink-0 rounded-full border-2',
-                  s.state === 'done' && 'border-drop bg-drop',
-                  s.state === 'next' && 'border-pending bg-white',
-                  s.state === 'bad' && 'border-fail bg-fail',
-                  s.state === 'skip' && 'border-adv bg-white',
-                )}
-              />
-              <div className="text-[12.5px] leading-5">
-                <div className="font-semibold">{s.label}</div>
-                <div className="text-[11.5px] text-mute">
-                  {s.at !== undefined && <span className="num">{clock(s.at)}</span>}
-                  {s.state === 'next' && s.at !== undefined && (
-                    <>
-                      {' '}
-                      · {L('بعد', 'in')} <Mm ms={s.at - t} />
-                    </>
-                  )}
-                  {s.note && <> · {s.note}</>}
+        <ol className="mt-2 flex flex-col gap-2.5 text-[12.5px] leading-5">
+          <li>
+            <b>{L('اتلقى العرض', 'Offer found')}</b> <span className="num text-[11.5px] text-mute">{clock(p.detectedAt)}</span>
+          </li>
+          {p.deliveries.map((d) => (
+            <li key={d.channel}>
+              <div className="mb-1 font-semibold">{channels[d.channel]()}</div>
+              <DeliveryCell d={d} t={t} />
+              {d.attempts.filter((a) => !a.ok).map((a, i) => (
+                <div key={i} className="mt-1 text-[11.5px] text-mute">
+                  <span className="num">{clock(a.at)}</span> · {a.error}
                 </div>
-              </div>
+              ))}
             </li>
           ))}
         </ol>
+        <div className="mt-3 text-[11.5px] text-mute" dir="ltr">{p.reason}</div>
       </div>
       <div>
-        <div className="flex items-center justify-between text-[12px] font-semibold text-body">
-          <span>{L('نص الرسالة (معاينة)', 'Message text (preview)')}</span>
-          {ge.k === 'sent' && p.general.msgId && (
-            <bdi dir="ltr" className="text-[11.5px] font-normal text-mute">
-              t.me/DealRadarEG/{p.general.msgId}
-            </bdi>
-          )}
-        </div>
+        <div className="text-[12px] font-semibold text-body">{L('ملخص العرض', 'Offer summary')}</div>
         <div className="mt-2 max-w-sm rounded-2xl rounded-ss-sm bg-white p-3 text-[13px] leading-6 shadow-sm ring-1 ring-line">
           <div className="flex items-center gap-1.5 text-[12px] font-bold text-tg">
             <Send className="size-3.5" /> {L('رادار العروض', 'Deal Radar')}
           </div>
-          <div className="mt-1 font-bold">{tx(p.name)}</div>
+          <div className="mt-1 font-bold">{p.name}</div>
           <div>
-            {L('السعر دلوقتي:', 'Price now:')} <b className="num">{price(p.price)} {L('ج.م', 'EGP')}</b>
+            {L('السعر:', 'Price:')} <b className="num">{price(p.price)} {L('ج.م', 'EGP')}</b>
           </div>
           <div className="text-body">
-            {p.discountKind === 'observed' ? L('نزول مرصود', 'Observed drop') : L('خصم معلن', 'Advertised discount')}{' '}
-            <span className="num">{p.discountPct}%</span> — {L('كان', 'was')} <span className="num">{price(p.was)}</span>{' '}
-            {L('ج.م', 'EGP')}
+            {basisLabel(p)} <span className="num">{Math.round(p.pct)}%</span>
+            {p.refPrice !== null && (
+              <>
+                {' '}
+                — {L('المرجع', 'reference')} <span className="num">{price(p.refPrice)}</span> {L('ج.م', 'EGP')}
+              </>
+            )}
           </div>
-          {p.exceptional && <div className="text-pending">{L('نزول استثنائي — قيد التحقق', 'Exceptional drop — verifying')}</div>}
-          <div className="text-[12px] text-mute">
-            {L('اتفحص', 'Checked')} {clock(p.discoveredAt)} · <bdi dir="ltr">{p.store}</bdi>
-          </div>
-          <div className="mt-1 text-[12.5px] font-semibold text-tg underline underline-offset-2">{L('افتح العرض', 'Open offer')}</div>
+          {p.labels.includes('exceptional') && <div className="text-pending">{L('نزول استثنائي — قيد التحقق', 'Exceptional drop — verifying')}</div>}
+          {p.source && <div className="text-[12px] text-mute" dir="ltr">{store(p.source).label}</div>}
+          <button onClick={() => openProduct(p.productId)} className="mt-1 inline-flex items-center gap-1 text-[12.5px] font-semibold text-tg underline underline-offset-2">
+            {L('افتح تفاصيل المنتج', 'Open product details')} <ArrowLeft className="size-3.5 ltr:rotate-180" />
+          </button>
         </div>
       </div>
     </div>
@@ -654,7 +438,7 @@ function PostDetail({ p, t }: { p: Post; t: number }) {
 function ChStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-xl bg-canvas/80 p-2.5">
-      <div className="text-[11px] text-body">{label}</div>
+      <div className="truncate text-[11px] text-body">{label}</div>
       <div className="num mt-0.5 truncate text-[17px] font-bold">
         <bdi>{value}</bdi>
       </div>

@@ -1,13 +1,12 @@
 import { Bookmark, BookmarkCheck, Clock, ExternalLink } from 'lucide-react'
-import { categories } from './data'
-import { amazonUrl, statuses, type Enriched } from './deal'
+import { statuses, store, type Item } from './deal'
 import { ago, date } from './format'
-import { L, tx } from './i18n'
-import { Money, Pct, StaleBadge, StatusBadge, Thumb, cx } from './ui'
+import { L } from './i18n'
+import { Money, Pct, SourceChip, StaleBadge, StatusBadge, Thumb, cx } from './ui'
 
-type Props = { p: Enriched; saved: boolean; onToggleSave: () => void; onOpen: () => void; active: boolean }
+type Props = { p: Item; category: string; saved: boolean; onToggleSave: () => void; onOpen: () => void; active: boolean }
 
-export function OfferCard({ p, saved, onToggleSave, onOpen, active }: Props) {
+export function OfferCard({ p, category, saved, onToggleSave, onOpen, active }: Props) {
   const a = p.a
   const st = statuses(a)
   const pending = a.exceptional
@@ -32,8 +31,9 @@ export function OfferCard({ p, saved, onToggleSave, onOpen, active }: Props) {
 
         <div className="flex flex-1 flex-col gap-3 p-4">
           <div>
-            <div className="text-[11.5px] font-medium text-mute">
-              {tx(categories.find((c) => c.id === p.category)!.label)}
+            <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-mute">
+              <SourceChip id={p.source} />
+              {category}
             </div>
             <h3 className="mt-0.5 line-clamp-1 text-[15px] leading-6 font-semibold">{p.name}</h3>
           </div>
@@ -91,22 +91,23 @@ export function OfferCard({ p, saved, onToggleSave, onOpen, active }: Props) {
           <div className="mt-auto flex items-center gap-1.5 text-[11.5px] text-body">
             <Clock className="size-3.5 text-mute" />
             <span>
-              {L('اتفحص', 'Checked')} <span className={cx('font-semibold', p.stale ? 'text-fail' : 'text-ink')}>{ago(p.checkedAt)}</span>
+              {L('اتفحص', 'Checked')} <span className={cx('font-semibold', p.stale ? 'text-fail' : 'text-ink')}>{ago(p.checked)}</span>
             </span>
             <span className="text-line">|</span>
             <span className="num text-mute">{a.count} {L('قراءة', 'readings')}</span>
+            {p.notRefreshed && <span className="ms-auto text-fail">{L('آخر محاولة فشلت', 'Last read failed')}</span>}
           </div>
         </div>
       </button>
 
       <div className="flex gap-2 border-t border-line p-3">
         <a
-          href={amazonUrl(p)}
+          href={p.url}
           target="_blank"
           rel="noreferrer"
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-ink text-[13px] font-semibold text-white transition hover:bg-ink-hover"
         >
-          {L('عرض على أمازون', 'View on Amazon')}
+          {store(p.source).view()}
           <ExternalLink className="size-3.5" />
         </a>
         <button

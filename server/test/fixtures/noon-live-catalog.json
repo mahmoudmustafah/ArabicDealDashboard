@@ -1,0 +1,67 @@
+{
+ "nbHits": 1450,
+ "nbPages": 10,
+ "hits": [
+  {
+   "sku": "N70275701V",
+   "name": "A6X Dual SIM Plum Purple 4GB RAM 64GB 4G - Middle East Version",
+   "brand": "OPPO",
+   "url": "a6x-dual-sim-plum-purple-4gb-ram-64gb-4g-middle-east-version",
+   "price": 10500,
+   "sale_price": 9770,
+   "image_key": "pzsku/ZF2D882BA41E4CCE575CDZ/45/_/1780306570/9fd5cf97-5966-4157-99e8-41818503591d",
+   "is_buyable": true,
+   "deal_tag": {
+    "tag_color": "#F5CED7",
+    "tag_text_color": "#CC0C39",
+    "text": "Mega Deal 📣"
+   },
+   "nudges": [
+    {
+     "text": "#9 in Smartphones",
+     "icon": "https://f.nooncdn.com/s/app/com/noon/images/nudges_icon_v2/cbs.png"
+    },
+    {
+     "text": "Selling out fast",
+     "icon": "https://f.nooncdn.com/s/app/com/noon/images/nudges_icon_v2/selling_out_fast.png"
+    }
+   ],
+   "flags": [
+    "fbn",
+    "quick_atc",
+    "free_delivery_eligible",
+    "nano"
+   ],
+   "stock": 3,
+   "offer_code": "d950f11665e8a4bb"
+  },
+  {
+   "sku": "N70377906V",
+   "name": "A200 Plus Dual SIM Nightly Blue 3GB RAM 128GB 4G -Middle East Version",
+   "brand": "ITEL",
+   "url": "a200-plus-dual-sim-nightly-blue-3gb-ram-128gb-4g-middle-east-version",
+   "price": 7300,
+   "sale_price": null,
+   "image_key": "pzsku/ZBB65938963D4FEB15BA1Z/45/_/1781086827/e9cae38b-f026-4658-9de7-534bdcec2956",
+   "is_buyable": true,
+   "nudges": [
+    {
+     "text": "#22 in Smartphones",
+     "icon": "https://f.nooncdn.com/s/app/com/noon/images/nudges_icon_v2/cbs.png"
+    },
+    {
+     "text": "Selling out fast",
+     "icon": "https://f.nooncdn.com/s/app/com/noon/images/nudges_icon_v2/selling_out_fast.png"
+    }
+   ],
+   "flags": [
+    "fbn",
+    "quick_atc",
+    "free_delivery_eligible",
+    "nano"
+   ],
+   "stock": 3,
+   "offer_code": "f533d3ee9a7e127b"
+  }
+ ]
+}

@@ -1,0 +1,24 @@
+{
+ "product": {
+  "sku": "N70275701V",
+  "product_title": "A6X Dual SIM Plum Purple 4GB RAM 64GB 4G - Middle East Version",
+  "brand": "OPPO",
+  "image_keys": [
+   "pzsku/ZF2D882BA41E4CCE575CDZ/45/_/1780306570/9fd5cf97-5966-4157-99e8-41818503591d"
+  ],
+  "variants": [
+   {
+    "sku": "N70275701V-1",
+    "offers": [
+     {
+      "price": 10500,
+      "sale_price": 9770,
+      "store_name": "Al basha",
+      "stock": 3,
+      "url": "a6x-dual-sim-plum-purple-4gb-ram-64gb-4g-middle-east-version"
+     }
+    ]
+   }
+  ]
+ }
+}
